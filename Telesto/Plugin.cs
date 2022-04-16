@@ -1,12 +1,13 @@
 ﻿using Dalamud.Game;
 using Dalamud.Game.ClientState;
-using Dalamud.Game.ClientState.Conditions;
+using Dalamud.Game.ClientState.Party;
 using Dalamud.Game.Command;
 using Dalamud.Game.Gui;
 using Dalamud.IoC;
 using Dalamud.Plugin;
 using ImGuiNET;
 using FFXIVClientStructs.FFXIV.Component.GUI;
+using FFXIVClientStructs.FFXIV.Client;
 using System;
 using System.Runtime.InteropServices;
 using System.Numerics;
@@ -27,12 +28,14 @@ namespace Telesto
 
         private DalamudPluginInterface _pi { get; init; }
         private CommandManager _cm { get; init; }
-        private ChatGui _cg { get; set; }
-        private GameGui _gg { get; set; }
+        private ChatGui _cg { get; init; }
+        private GameGui _gg { get; init; }
         private ClientState _cs { get; init; }
-        private Condition _cd { get; init; }
+        private PartyList _pl { get; init; }
 
         private string _debugTeleTest = "";
+        private string _debugSigTest = "";
+        private bool _debugSigFindHit = false;
         private bool _configOpen = false;
         private bool _loggedIn = false;
         private bool _funcPtrFound = false;
@@ -53,15 +56,15 @@ namespace Telesto
             [RequiredVersion("1.0")] Framework framework,
             [RequiredVersion("1.0")] GameGui gameGui,
             [RequiredVersion("1.0")] ChatGui chatGui,
-            [RequiredVersion("1.0")] Condition condition
+            [RequiredVersion("1.0")] PartyList partylist
         )
         {
             _pi = pluginInterface;
             _cm = commandManager;
             _cs = clientState;
-            _cd = condition;
             _gg = gameGui;
-            _cg = chatGui;            
+            _cg = chatGui;
+            _pl = partylist;
             _cfg = _pi.GetPluginConfig() as Config ?? new Config();
             _pi.UiBuilder.Draw += DrawUI;            
             _pi.UiBuilder.OpenConfigUi += OpenConfigUI;
@@ -92,12 +95,17 @@ namespace Telesto
         private void FindSigs()
         {
             // sig from saltycog/ffxiv-startup-commands
-            IntPtr chatBoxModulePointer = TargetModuleScanner.ScanText("48 89 5C 24 ?? 57 48 83 EC 20 48 8B FA 48 8B D9 45 84 C9");
+            IntPtr chatBoxModulePointer = SearchForSig("48 89 5C 24 ?? 57 48 83 EC 20 48 8B FA 48 8B D9 45 84 C9");
             if (chatBoxModulePointer != IntPtr.Zero)
             {
                 postCmdFuncptr = Marshal.GetDelegateForFunctionPointer<PostCommandDelegate>(chatBoxModulePointer);
                 _funcPtrFound = (postCmdFuncptr != null);
             }
+        }
+
+        private IntPtr SearchForSig(string sig)
+        {
+            return TargetModuleScanner.ScanText(sig);
         }
 
         private void _cs_Logout(object sender, EventArgs e)
@@ -177,6 +185,23 @@ namespace Telesto
             {
                 ImGui.Checkbox("Logged in", ref stateLoggedIn);
                 ImGui.Checkbox("Function pointer found", ref stateFuncPtrFound);
+                ImGui.Separator();
+                ImGui.InputText("Find sig", ref _debugSigTest, 2048);
+                ImGui.Text(_debugSigFindHit == true ? "Hit found" : "Hit not found");
+                if (ImGui.Button("Find"))
+                {
+                    try
+                    {
+                        _debugSigFindHit = false;
+                        IntPtr res = SearchForSig(_debugSigTest);
+                        _debugSigFindHit = res != (IntPtr.Zero);
+                        _debugSigTest = "";
+                    }
+                    catch (Exception ex)
+                    {
+                        _cg.PrintError(String.Format("Exception in find sig test: {0}", ex.Message));
+                    }
+                }
                 ImGui.Separator();
                 ImGui.InputText("Telegram test input", ref _debugTeleTest, 2048);
                 if (ImGui.Button("Process test input"))
@@ -271,53 +296,55 @@ namespace Telesto
             );
         }
 
-        internal void ProcessTelegram(string json)
+        internal string ProcessTelegram(string json)
         {            
             Dictionary<string, object> d = _pr.Parse(json);
-            ProcessTelegramDictionary(d);
+            return ProcessTelegramDictionary(d);
         }
 
-        private void ProcessTelegramDictionary(Dictionary<string, object> d)
+        private string ProcessTelegramDictionary(Dictionary<string, object> d)
         {
             switch (d["type"].ToString().ToLower())
             {
                 case "printmessage":
-                    HandlePrintMessage(d["payload"]);
-                    break;
+                    return HandlePrintMessage(d["payload"]);
                 case "printerror":
-                    HandlePrintError(d["payload"]);
-                    break;
+                    return HandlePrintError(d["payload"]);
                 case "executecommand":
-                    HandleExecuteCommand(d["payload"]);
-                    break;
+                    return HandleExecuteCommand(d["payload"]);
                 case "openmap":
-                    HandleOpenMap(d["payload"]);
-                    break;
+                    return HandleOpenMap(d["payload"]);
                 case "bundle":
-                    HandleBundle(d["payload"]);
-                    break;
+                    return HandleBundle(d["payload"]);
+                case "getpartymembers":
+                    return HandleGetPartyMembers();
             }
+            _cg.PrintError(String.Format("Unhandled Telesto telegram type '{0}'", d["type"].ToString()));
+            return null;
         }
 
-        private void HandlePrintMessage(object o)
+        private string HandlePrintMessage(object o)
         {
             Dictionary<string, object> d = (Dictionary<string, object>)o;
             _cg.Print(d["message"].ToString());
+            return null;
         }
 
-        private void HandlePrintError(object o)
+        private string HandlePrintError(object o)
         {
             Dictionary<string, object> d = (Dictionary<string, object>)o;
             _cg.PrintError(d["message"].ToString());
+            return null;
         }
 
-        private void HandleExecuteCommand(object o)
+        private string HandleExecuteCommand(object o)
         {
             Dictionary<string, object> d = (Dictionary<string, object>)o;
             SubmitCommand(d["command"].ToString());
+            return null;
         }
 
-        private void HandleOpenMap(object o)
+        private string HandleOpenMap(object o)
         {
             Dictionary<string, object> d = (Dictionary<string, object>)o;
             switch (d["coords"].ToString().ToLower())
@@ -331,15 +358,34 @@ namespace Telesto
                 default:
                     throw new ArgumentException("'coords' should be either 'raw' or 'world'");
             }
+            return null;
         }
 
-        private void HandleBundle(object o)
+        private string HandleBundle(object o)
         {
             List<object> obs = (List<object>)o;
             foreach (object ob in obs)
             {
                 ProcessTelegramDictionary((Dictionary<string, object>)ob);
             }
+            return null;
+        }
+
+        private string HandleGetPartyMembers()
+        {
+            int num = 0;
+             _pl.GetPartyMemberAddress(0);
+            using (IEnumerator<PartyMember> pms = _pl.GetEnumerator())
+            {
+                while (pms.MoveNext() == true)
+                {
+                    num++;
+                    PartyMember pm = pms.Current;
+                    _cg.Print(pm.Name);
+                }
+            }
+            _cg.Print("Nium is " + num);
+            return null;
         }
 
     }

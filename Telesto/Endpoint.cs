@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using System.Net;
+using System.Text;
 using System.Threading;
 
 namespace Telesto
@@ -110,6 +111,7 @@ namespace Telesto
                 try
                 {
                     HttpListenerContext hctx = null;
+                    string resp = null;
                     try
                     {
                         hctx = http.GetContext();
@@ -124,7 +126,13 @@ namespace Telesto
                             body = sr.ReadToEnd();
                         }
                         hctx.Response.StatusCode = 200;
-                        plug.ProcessTelegram(body);
+                        resp = plug.ProcessTelegram(body);
+                        if (resp != null)
+                        {
+                            Stream s = hctx.Response.OutputStream;
+                            byte[] buf = Encoding.UTF8.GetBytes(resp);
+                            s.Write(buf, 0, buf.Length);
+                        }
                     }
                     catch (Exception ex)
                     {
