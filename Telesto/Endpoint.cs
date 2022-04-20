@@ -3,6 +3,7 @@ using System.IO;
 using System.Net;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Telesto
 {
@@ -65,8 +66,8 @@ namespace Telesto
                 {
                     if (curctx != null)
                     {
-                        curctx.Listener.Abort();
                         curctx.Running = false;
+                        curctx.Listener.Abort();
                     }
                     curctx = ctx;
                 }
@@ -88,8 +89,8 @@ namespace Telesto
             {
                 if (curctx != null)
                 {
-                    curctx.Listener.Abort();
                     curctx.Running = false;
+                    curctx.Listener.Abort();
                 }
                 curctx = null;
             }
@@ -111,41 +112,44 @@ namespace Telesto
                 try
                 {
                     HttpListenerContext hctx = null;
-                    string resp = null;
-                    try
+                    hctx = http.GetContext();
+                    if (hctx == null)
                     {
-                        hctx = http.GetContext();
-                        HttpListenerRequest req = hctx.Request;
-                        if (req.HttpMethod != "POST")
-                        {
-                            continue;
-                        }
-                        string body;
-                        using (StreamReader sr = new StreamReader(req.InputStream, req.ContentEncoding))
-                        {
-                            body = sr.ReadToEnd();
-                        }
-                        hctx.Response.StatusCode = 200;
-                        resp = plug.ProcessTelegram(body);
-                        if (resp != null)
-                        {
-                            Stream s = hctx.Response.OutputStream;
-                            byte[] buf = Encoding.UTF8.GetBytes(resp);
-                            s.Write(buf, 0, buf.Length);
-                        }
+                        continue;
                     }
-                    catch (Exception ex)
+                    SetStatus(StatusEnum.Unchanged, String.Format("Received request"));
+                    Task t = new Task(() =>
                     {
-                        if (hctx != null)
+                        try
+                        {
+                            HttpListenerRequest req = hctx.Request;
+                            if (req.HttpMethod != "POST")
+                            {
+                                throw new InvalidOperationException(String.Format("Received request was not HTTP POST"));
+                            }
+                            string body;
+                            using (StreamReader sr = new StreamReader(req.InputStream, req.ContentEncoding))
+                            {
+                                body = sr.ReadToEnd();
+                            }
+                            string resp = plug.QueueTelegram(body);
+                            SetStatus(StatusEnum.Unchanged, String.Format("Request processed, {0}", resp == null ? "no response" : "response length is " + resp.Length));
+                            if (resp != null)
+                            {
+                                Stream s = hctx.Response.OutputStream;
+                                byte[] buf = Encoding.UTF8.GetBytes(resp);
+                                s.Write(buf, 0, buf.Length);
+                            }
+                            hctx.Response.StatusCode = 200;
+                        }
+                        catch (Exception ex)
                         {
                             hctx.Response.StatusCode = 500;
+                            SetStatus(StatusEnum.Unchanged, String.Format("Exception: {0} @ {1}", ex.Message, ex.StackTrace));
                         }
-                        SetStatus(StatusEnum.Unchanged, String.Format("Exception: {0} @ {1}", ex.Message, ex.StackTrace));
-                    }
-                    if (hctx != null)
-                    {
                         hctx.Response.Close();
-                    }
+                    });
+                    t.Start();                        
                 }
                 catch (Exception ex)
                 {

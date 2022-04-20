@@ -6,12 +6,14 @@ using Dalamud.Game.Gui;
 using Dalamud.IoC;
 using Dalamud.Plugin;
 using ImGuiNET;
+using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Component.GUI;
-using FFXIVClientStructs.FFXIV.Client;
 using System;
 using System.Runtime.InteropServices;
 using System.Numerics;
 using System.Collections.Generic;
+using System.Threading;
+using System.Text.Json;
 
 namespace Telesto
 {
@@ -19,6 +21,39 @@ namespace Telesto
     // Telegram Service for Triggernometry Operations (TELESTO)
     public sealed class Plugin : IDalamudPlugin
     {
+
+        private class Response
+        {
+
+            public int version { get; set; } = 1;
+            public int id { get; set; } = 0;
+            public object response { get; set; } = null;
+
+        }
+
+        private class Combatant
+        {
+
+            public string name { get; set; }
+            public int order { get; set; }
+
+        }
+
+        internal class PendingRequest : IDisposable
+        {
+
+            public AutoResetEvent ReadyEvent = new AutoResetEvent(false);
+
+            public int Id { get; set; }
+            public string Request { get; set; }
+            public object Response { get; set; } = null;
+
+            public void Dispose()
+            {
+                ReadyEvent.Dispose();
+            }
+
+        }
 
         private Parser _pr = null;
         private Endpoint _ep = null;
@@ -34,8 +69,6 @@ namespace Telesto
         private PartyList _pl { get; init; }
 
         private string _debugTeleTest = "";
-        private string _debugSigTest = "";
-        private bool _debugSigFindHit = false;
         private bool _configOpen = false;
         private bool _loggedIn = false;
         private bool _funcPtrFound = false;
@@ -43,8 +76,13 @@ namespace Telesto
         private bool _cfgAutostartEndpoint;
         private string _cfgHttpEndpoint;
 
+        private int _reqServed = 0;
+
         private delegate void PostCommandDelegate(IntPtr ui, IntPtr cmd, IntPtr unk1, byte unk2);
+        private IntPtr _chatBoxModPtr = IntPtr.Zero;
         private PostCommandDelegate postCmdFuncptr = null;
+
+        private Queue<PendingRequest> Requests = new Queue<PendingRequest>();
 
         [PluginService]
         public static SigScanner TargetModuleScanner { get; private set; }
@@ -66,7 +104,7 @@ namespace Telesto
             _cg = chatGui;
             _pl = partylist;
             _cfg = _pi.GetPluginConfig() as Config ?? new Config();
-            _pi.UiBuilder.Draw += DrawUI;            
+            _pi.UiBuilder.Draw += DrawUI;
             _pi.UiBuilder.OpenConfigUi += OpenConfigUI;
             _cm.AddHandler("/telesto", new CommandInfo(OnCommand)
             {
@@ -95,10 +133,10 @@ namespace Telesto
         private void FindSigs()
         {
             // sig from saltycog/ffxiv-startup-commands
-            IntPtr chatBoxModulePointer = SearchForSig("48 89 5C 24 ?? 57 48 83 EC 20 48 8B FA 48 8B D9 45 84 C9");
-            if (chatBoxModulePointer != IntPtr.Zero)
+            _chatBoxModPtr = SearchForSig("48 89 5C 24 ?? 57 48 83 EC 20 48 8B FA 48 8B D9 45 84 C9");
+            if (_chatBoxModPtr != IntPtr.Zero)
             {
-                postCmdFuncptr = Marshal.GetDelegateForFunctionPointer<PostCommandDelegate>(chatBoxModulePointer);
+                postCmdFuncptr = Marshal.GetDelegateForFunctionPointer<PostCommandDelegate>(_chatBoxModPtr);
                 _funcPtrFound = (postCmdFuncptr != null);
             }
         }
@@ -121,6 +159,19 @@ namespace Telesto
             FindSigs();
         }
 
+        internal string QueueTelegram(string tele)
+        {
+            using (PendingRequest pr = new PendingRequest() { Request = tele })
+            {
+                lock (Requests)
+                {
+                    Requests.Enqueue(pr);
+                }
+                pr.ReadyEvent.WaitOne();
+                return JsonSerializer.Serialize<Response>(new Response() { id = pr.Id, response = pr.Response });
+            }
+        }
+
         public void Dispose()
         {
             if (_ep != null)
@@ -141,17 +192,31 @@ namespace Telesto
 
         private void DrawUI()
         {
+            PendingRequest pr = null;
+            int queueSize = 0;
+            lock (Requests)
+            {
+                queueSize = Requests.Count;
+                if (queueSize > 0)
+                {
+                    pr = Requests.Dequeue();
+                }
+            }
+            if (pr != null)
+            {
+                pr.Response = ProcessRequest(pr);
+                pr.ReadyEvent.Set();
+                _reqServed++;
+            }
             if (_configOpen == false)
             {
                 return;
             }
-            bool stateLoggedIn = _loggedIn;
-            bool stateFuncPtrFound = _funcPtrFound;
             ImGui.SetNextWindowSize(new Vector2(300, 500), ImGuiCond.FirstUseEver);
             ImGui.Begin("Telesto", ref _configOpen);
             ImGui.Separator();
             ImGui.BeginTabBar("Telesto_Main", ImGuiTabBarFlags.None);
-                
+
             if (ImGui.BeginTabItem("Endpoint"))
             {
                 ImGui.Checkbox("Start endpoint on launch", ref _cfgAutostartEndpoint);
@@ -183,32 +248,22 @@ namespace Telesto
 
             if (ImGui.BeginTabItem("Debug"))
             {
-                ImGui.Checkbox("Logged in", ref stateLoggedIn);
-                ImGui.Checkbox("Function pointer found", ref stateFuncPtrFound);
-                ImGui.Separator();
-                ImGui.InputText("Find sig", ref _debugSigTest, 2048);
-                ImGui.Text(_debugSigFindHit == true ? "Hit found" : "Hit not found");
-                if (ImGui.Button("Find"))
-                {
-                    try
-                    {
-                        _debugSigFindHit = false;
-                        IntPtr res = SearchForSig(_debugSigTest);
-                        _debugSigFindHit = res != (IntPtr.Zero);
-                        _debugSigTest = "";
-                    }
-                    catch (Exception ex)
-                    {
-                        _cg.PrintError(String.Format("Exception in find sig test: {0}", ex.Message));
-                    }
-                }
+                ImGui.Text(String.Format("Logged in: {0}", _loggedIn));
+                ImGui.Text(String.Format("Function pointer found: {0}", _funcPtrFound));
+                ImGui.Text(String.Format("Function pointer: {0:X}", _chatBoxModPtr));
+                ImGui.Text(String.Format("Request queue size: {0}", queueSize));
+                ImGui.Text(String.Format("Requests served: {0}", _reqServed));
                 ImGui.Separator();
                 ImGui.InputText("Telegram test input", ref _debugTeleTest, 2048);
                 if (ImGui.Button("Process test input"))
                 {
                     try
                     {
-                        ProcessTelegram(_debugTeleTest);
+                        using (pr = new PendingRequest())
+                        {
+                            pr.Request = _debugTeleTest;
+                            ProcessRequest(pr);
+                        }
                         _debugTeleTest = "";
                     }
                     catch (Exception ex)
@@ -267,7 +322,7 @@ namespace Telesto
                 {
                     using (Command payload = new Command(cmd))
                     {
-                        IntPtr p = Marshal.AllocHGlobal(400);
+                        IntPtr p = Marshal.AllocHGlobal(32);
                         try
                         {
                             Marshal.StructureToPtr(payload, p, false);
@@ -296,13 +351,15 @@ namespace Telesto
             );
         }
 
-        internal string ProcessTelegram(string json)
-        {            
+        internal object ProcessRequest(PendingRequest pr)
+        {
+            string json = pr.Request;
             Dictionary<string, object> d = _pr.Parse(json);
+            pr.Id = Convert.ToInt32(d["id"]);
             return ProcessTelegramDictionary(d);
         }
 
-        private string ProcessTelegramDictionary(Dictionary<string, object> d)
+        private object ProcessTelegramDictionary(Dictionary<string, object> d)
         {
             switch (d["type"].ToString().ToLower())
             {
@@ -318,33 +375,35 @@ namespace Telesto
                     return HandleBundle(d["payload"]);
                 case "getpartymembers":
                     return HandleGetPartyMembers();
+                case "ping":
+                    return HandlePing();
             }
             _cg.PrintError(String.Format("Unhandled Telesto telegram type '{0}'", d["type"].ToString()));
             return null;
         }
 
-        private string HandlePrintMessage(object o)
+        private object HandlePrintMessage(object o)
         {
             Dictionary<string, object> d = (Dictionary<string, object>)o;
             _cg.Print(d["message"].ToString());
             return null;
         }
 
-        private string HandlePrintError(object o)
+        private object HandlePrintError(object o)
         {
             Dictionary<string, object> d = (Dictionary<string, object>)o;
             _cg.PrintError(d["message"].ToString());
             return null;
         }
 
-        private string HandleExecuteCommand(object o)
+        private object HandleExecuteCommand(object o)
         {
             Dictionary<string, object> d = (Dictionary<string, object>)o;
             SubmitCommand(d["command"].ToString());
             return null;
         }
 
-        private string HandleOpenMap(object o)
+        private object HandleOpenMap(object o)
         {
             Dictionary<string, object> d = (Dictionary<string, object>)o;
             switch (d["coords"].ToString().ToLower())
@@ -361,7 +420,7 @@ namespace Telesto
             return null;
         }
 
-        private string HandleBundle(object o)
+        private object HandleBundle(object o)
         {
             List<object> obs = (List<object>)o;
             foreach (object ob in obs)
@@ -371,21 +430,31 @@ namespace Telesto
             return null;
         }
 
-        private string HandleGetPartyMembers()
+        [StructLayout(LayoutKind.Explicit, Size = 24)]
+        public unsafe struct PartyListCharacter
         {
-            int num = 0;
-             _pl.GetPartyMemberAddress(0);
-            using (IEnumerator<PartyMember> pms = _pl.GetEnumerator())
+
+            [FieldOffset(0x00)]
+            public byte* ptr;
+
+        }
+
+        private unsafe object HandleGetPartyMembers()
+        {
+            AddonPartyList *pl = (AddonPartyList *)_gg.GetAddonByName("_PartyList", 1);
+            IntPtr pla = _gg.FindAgentInterface(pl);
+            List<Combatant> cbs = new List<Combatant>();
+            for (int i = 0; i < pl->MemberCount; i++)
             {
-                while (pms.MoveNext() == true)
-                {
-                    num++;
-                    PartyMember pm = pms.Current;
-                    _cg.Print(pm.Name);
-                }
+                IntPtr p = (pla + (0x101a + 0xd8 * i));
+                cbs.Add(new Combatant() { name = Marshal.PtrToStringUTF8(p), order = i + 1 });
             }
-            _cg.Print("Nium is " + num);
-            return null;
+            return cbs;
+        }
+
+        private object HandlePing()
+        {
+            return "pong";
         }
 
     }
