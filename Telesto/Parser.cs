@@ -53,8 +53,9 @@ namespace Telesto
 
         private void FixComplexTypes(Dictionary<string, object> o)
         {
-            foreach (string key in o.Keys)
-            {
+            List<string> keys = new List<string>(o.Keys);
+            foreach (string key in keys)
+            { 
                 if (o[key] is JsonElement)
                 {
                     JsonElement ele = (JsonElement)o[key];

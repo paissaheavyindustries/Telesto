@@ -14,6 +14,7 @@ using System.Numerics;
 using System.Collections.Generic;
 using System.Threading;
 using System.Text.Json;
+using FFXIVClientStructs.FFXIV.Client.System.String;
 
 namespace Telesto
 {
@@ -34,7 +35,8 @@ namespace Telesto
         private class Combatant
         {
 
-            public string name { get; set; }
+            public string displayname { get; set; }
+            public string fullname { get; set; }
             public int order { get; set; }
 
         }
@@ -194,19 +196,26 @@ namespace Telesto
         {
             PendingRequest pr = null;
             int queueSize = 0;
-            lock (Requests)
+            try
             {
-                queueSize = Requests.Count;
-                if (queueSize > 0)
+                lock (Requests)
                 {
-                    pr = Requests.Dequeue();
+                    queueSize = Requests.Count;
+                    if (queueSize > 0)
+                    {
+                        pr = Requests.Dequeue();
+                    }
+                }
+                if (pr != null)
+                {
+                    pr.Response = ProcessRequest(pr);
+                    pr.ReadyEvent.Set();
+                    _reqServed++;
                 }
             }
-            if (pr != null)
+            catch (Exception ex)
             {
-                pr.Response = ProcessRequest(pr);
-                pr.ReadyEvent.Set();
-                _reqServed++;
+                _cg.PrintError(String.Format("Exception in telegram processing: {0}", ex.Message));
             }
             if (_configOpen == false)
             {
@@ -439,6 +448,11 @@ namespace Telesto
 
         }
 
+        private unsafe string UTF8StringToString(Utf8String s)
+        {
+            return System.Text.Encoding.UTF8.GetString(s.IsUsingInlineBuffer != 0 ? s.InlineBuffer : s.StringPtr, (int)s.BufUsed);
+        }
+
         private unsafe object HandleGetPartyMembers()
         {
             AddonPartyList *pl = (AddonPartyList *)_gg.GetAddonByName("_PartyList", 1);
@@ -447,7 +461,8 @@ namespace Telesto
             for (int i = 0; i < pl->MemberCount; i++)
             {
                 IntPtr p = (pla + (0x101a + 0xd8 * i));
-                cbs.Add(new Combatant() { name = Marshal.PtrToStringUTF8(p), order = i + 1 });
+                Utf8String s = pl->PartyMember[i].Name->NodeText;
+                cbs.Add(new Combatant() { displayname = UTF8StringToString(s), fullname = Marshal.PtrToStringUTF8(p), order = i + 1 });
             }
             return cbs;
         }
