@@ -76,7 +76,7 @@ namespace Telesto
         private bool _funcPtrFound = false;
 
         private bool _cfgAutostartEndpoint;
-        private string _cfgHttpEndpoint;
+        private string _cfgHttpEndpoint = "";
 
         private int _reqServed = 0;
 
@@ -189,7 +189,7 @@ namespace Telesto
 
         private void OnCommand(string command, string args)
         {
-            _configOpen = true;
+            OpenConfigUI();
         }
 
         private void DrawUI()
