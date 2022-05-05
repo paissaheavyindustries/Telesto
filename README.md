@@ -6,6 +6,10 @@ This plugin allows Triggernometry (and other programs, why not) some means to in
 
 The plugin starts listening to JSON payloads on HTTP POST on a specific port, and from there it will just execute whatever commands are sent by the external application.
 
+## How to install
+
+You will find the plugin in my Dalamud plugin repository at https://github.com/paissaheavyindustries/Dalamud-Repo! Follow the instructions there on how to use the repository.
+
 ## (X) JSON!
 
 The general form is `{ "version": 1, "id": x, "type": y, "payload": z }`, where:
