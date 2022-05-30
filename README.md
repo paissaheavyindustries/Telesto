@@ -6,6 +6,17 @@ This plugin allows Triggernometry (and other programs, why not) some means to in
 
 The plugin starts listening to JSON payloads on HTTP POST on a specific port, and from there it will just execute whatever commands are sent by the external application.
 
+## How to install
+
+You will find the plugin in my Dalamud plugin repository at https://github.com/paissaheavyindustries/Dalamud-Repo! Follow the instructions there on how to use the repository.
+
+## In-game usage and configuration
+
+* Type `/telesto` to open the configuration UI
+* General settings
+  * "Start endpoint on launch" controls whether the HTTP endpoint is available when the plugin loads or not
+  * "HTTP POST endpoint" is the HTTP endpoint
+  * 
 ## (X) JSON!
 
 The general form is `{ "version": 1, "id": x, "type": y, "payload": z }`, where:
@@ -30,10 +41,3 @@ Example: `{ "version": 1, "id": 123456, "type": "OpenMap", "payload": { "territo
 
 `Bundle`: A bundle of telegrams.
 Example: `{ "version": 1, "id": 123456, "type": "Bundle", "payload": [ { "id": 123456, "type": "PrintMessage", "payload": { "message": "hello world" } }, { "id": 123456, "type": "ExecuteCommand", "payload": { "command": "/mk attack1 <1>" } } ] }`
-
-## In-game usage and configuration
-
-* Type `/telesto` to open the configuration UI
-* General settings
-  * "Start endpoint on launch" controls whether the HTTP endpoint is available when the plugin loads or not
-  * "HTTP POST endpoint" is the HTTP endpoint
