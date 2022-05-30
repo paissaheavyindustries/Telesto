@@ -38,6 +38,119 @@ namespace Telesto
             public string displayname { get; set; }
             public string fullname { get; set; }
             public int order { get; set; }
+            public uint jobid { get; set; }
+            public byte level { get; set; }
+            public string actor { get; set; }
+
+            public string job
+            {
+                get
+                {
+                    switch (jobid)
+                    {
+                        // JOBS
+                        case 33: return "AST";
+                        case 23: return "BRD";
+                        case 25: return "BLM";
+                        case 36: return "BLU";
+                        case 38: return "DNC";
+                        case 32: return "DRK";
+                        case 22: return "DRG";
+                        case 37: return "GNB";
+                        case 31: return "MCH";
+                        case 20: return "MNK";
+                        case 30: return "NIN";
+                        case 19: return "PLD";
+                        case 35: return "RDM";
+                        case 39: return "RPR";
+                        case 34: return "SAM";
+                        case 28: return "SCH";
+                        case 40: return "SGE";
+                        case 27: return "SMN";
+                        case 21: return "WAR";
+                        case 24: return "WHM";
+                        // CRAFTERS
+                        case 14: return "ALC";
+                        case 10: return "ARM";
+                        case 9: return "BSM";
+                        case 8: return "CRP";
+                        case 15: return "CUL";
+                        case 11: return "GSM";
+                        case 12: return "LTW";
+                        case 13: return "WVR";
+                        // GATHERERS
+                        case 17: return "BTN";
+                        case 18: return "FSH";
+                        case 16: return "MIN";
+                        // CLASSES
+                        case 26: return "ACN";
+                        case 5: return "ARC";
+                        case 6: return "CNJ";
+                        case 1: return "GLA";
+                        case 4: return "LNC";
+                        case 3: return "MRD";
+                        case 2: return "PUG";
+                        case 29: return "ROG";
+                        case 7: return "THM";
+                    }
+                    return "";
+                }
+            }
+
+            public string role
+            {
+                get
+                {
+                    switch (jobid)
+                    {
+                        // JOBS
+                        case 19: return "Tank";
+                        case 21: return "Tank";
+                        case 32: return "Tank";
+                        case 37: return "Tank";
+                        case 24: return "Healer";
+                        case 28: return "Healer";
+                        case 33: return "Healer";
+                        case 40: return "Healer";
+                        case 20: return "DPS";
+                        case 22: return "DPS";
+                        case 23: return "DPS";
+                        case 25: return "DPS";
+                        case 27: return "DPS";
+                        case 30: return "DPS";
+                        case 31: return "DPS";
+                        case 34: return "DPS";
+                        case 35: return "DPS";
+                        case 36: return "DPS";
+                        case 38: return "DPS";
+                        case 39: return "DPS";
+                        // CRAFTERS
+                        case 8: return "Crafter";
+                        case 9: return "Crafter";
+                        case 10: return "Crafter";
+                        case 11: return "Crafter";
+                        case 12: return "Crafter";
+                        case 13: return "Crafter";
+                        case 14: return "Crafter";
+                        case 15: return "Crafter";
+                        // GATHERERS
+                        case 16: return "Gatherer";
+                        case 17: return "Gatherer";
+                        case 18: return "Gatherer";
+                        // CLASSES
+                        case 1: return "Tank";
+                        case 3: return "Tank";
+                        case 6: return "Healer";
+                        case 26: return "Healer";
+                        case 2: return "DPS";
+                        case 4: return "DPS";
+                        case 5: return "DPS";
+                        case 7: return "DPS";
+                        case 29: return "DPS";
+                    }
+                    return "";
+                }
+            }
 
         }
 
@@ -458,11 +571,37 @@ namespace Telesto
             AddonPartyList *pl = (AddonPartyList *)_gg.GetAddonByName("_PartyList", 1);
             IntPtr pla = _gg.FindAgentInterface(pl);
             List<Combatant> cbs = new List<Combatant>();
-            for (int i = 0; i < pl->MemberCount; i++)
+            Dictionary<string, PartyMember> pls = new Dictionary<string, PartyMember>();
+            for (int i = 0; i < _pl.Length; i++)
             {
+                pls[_pl[i].Name.TextValue] = _pl[i];
+            }
+            for (int i = 0; i < pl->MemberCount; i++)
+            {                
                 IntPtr p = (pla + (0x101a + 0xd8 * i));
                 Utf8String s = pl->PartyMember[i].Name->NodeText;
-                cbs.Add(new Combatant() { displayname = UTF8StringToString(s), fullname = Marshal.PtrToStringUTF8(p), order = i + 1 });
+                string dispname = UTF8StringToString(s);                
+                string fullname = Marshal.PtrToStringUTF8(p);
+                if (dispname[0] == '\u0000')
+                {
+                    dispname = "";
+                }
+                uint jobid = 0;
+                byte level = 0;
+                string actor = "";
+                if (pls.ContainsKey(fullname) == true)
+                {
+                    jobid = pls[fullname].ClassJob.Id;
+                    level = pls[fullname].Level;
+                    actor = String.Format("{0:x8}", pls[fullname].GameObject.ObjectId);
+                }
+                else if (fullname == _cs.LocalPlayer.Name.TextValue)
+                {
+                    jobid = _cs.LocalPlayer.ClassJob.Id;
+                    level = _cs.LocalPlayer.Level;
+                    actor = String.Format("{0:x8}", _cs.LocalPlayer.ObjectId);
+                }
+                cbs.Add(new Combatant() { displayname = dispname, fullname = fullname, order = i + 1, jobid = jobid, level = level, actor = actor });
             }
             return cbs;
         }
