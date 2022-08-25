@@ -16,7 +16,13 @@ You will find the plugin in my Dalamud plugin repository at https://github.com/p
 * General settings
   * "Start endpoint on launch" controls whether the HTTP endpoint is available when the plugin loads or not
   * "HTTP POST endpoint" is the HTTP endpoint
-  * 
+
+## Support / Discord
+
+There's a publicly available Discord server for announcements, suggestions, and questions - feel free to join at:
+
+https://discord.gg/6f9MY55
+
 ## (X) JSON!
 
 The general form is `{ "version": 1, "id": x, "type": y, "payload": z }`, where:
