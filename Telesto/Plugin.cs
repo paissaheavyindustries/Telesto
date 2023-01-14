@@ -578,7 +578,7 @@ namespace Telesto
             }
             for (int i = 0; i < pl->MemberCount; i++)
             {                
-                IntPtr p = (pla + (0x101a + 0xd8 * i));
+                IntPtr p = (pla + (0x14ca + 0xd8 * i));
                 Utf8String s = pl->PartyMember[i].Name->NodeText;
                 string dispname = UTF8StringToString(s);                
                 string fullname = Marshal.PtrToStringUTF8(p);
@@ -591,9 +591,10 @@ namespace Telesto
                 string actor = "";
                 if (pls.ContainsKey(fullname) == true)
                 {
-                    jobid = pls[fullname].ClassJob.Id;
-                    level = pls[fullname].Level;
-                    actor = String.Format("{0:x8}", pls[fullname].GameObject.ObjectId);
+                    PartyMember pm = pls[fullname];
+                    jobid = pm.ClassJob.Id;
+                    level = pm.Level;
+                    actor = String.Format("{0:x8}", (pm.GameObject != null ? pm.GameObject.ObjectId : pm.ObjectId));
                 }
                 else if (fullname == _cs.LocalPlayer.Name.TextValue)
                 {
