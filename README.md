@@ -82,8 +82,8 @@ This example would draw a blinking line from the nearest summoning bell to the n
 
 #### Circle doodle
 
-`radius`: Radius of the circle
-`filled`: Determines if the circle is filled (`true`) or not (`false`)
+`radius`: Radius of the circle  
+`filled`: Determines if the circle is filled (`true`) or not (`false`)  
 `position`: Center coordinate of the circle (scroll down for coordinate specifications)
 
 This example would draw a circle at the bottom of the nearest market board: `{ "version": 1, "id": 123456, "type": "EnableDoodle", "payload": { "name": "meow3", "type": "circle", "r": "1", "g": "1", "expiresin": "1000000", "radius": "20", "position": { "coords": "entity", "name": "Market Board" } } }`
@@ -96,8 +96,8 @@ Coordinate specifications for some telegram follow the following format:
 
 Where `coords` can be one of:
 
-`screen`: Screen space coordinates; properties are `x`, `y`, and `z`, of which all support numeric expressions
-`world`: Game world coordinates; properties are `x`, `y`, and `z`, of which all support numeric expressions
+`screen`: Screen space coordinates; properties are `x`, `y`, and `z`, of which all support numeric expressions  
+`world`: Game world coordinates; properties are `x`, `y`, and `z`, of which all support numeric expressions  
 `entity`: Latched onto a game object/entity; properties are `id` to specify an object by hex ID string, or `name` to specify object by name
 
 So to display something at screen coordinates 100, 20, you would say:
