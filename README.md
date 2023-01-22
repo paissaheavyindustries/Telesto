@@ -47,3 +47,28 @@ Example: `{ "version": 1, "id": 123456, "type": "OpenMap", "payload": { "territo
 
 `Bundle`: A bundle of telegrams.
 Example: `{ "version": 1, "id": 123456, "type": "Bundle", "payload": [ { "id": 123456, "type": "PrintMessage", "payload": { "message": "hello world" } }, { "id": 123456, "type": "ExecuteCommand", "payload": { "command": "/mk attack1 <1>" } } ] }`
+
+### Coordinate specification
+
+Coordinate specifications for some telegram follow the following format:
+
+`"position": { "coords": "...", ... }`
+
+Where `coords` can be one of:
+
+`screen`: Screen space coordinates; properties are `x`, `y`, and `z`
+`world`: Game world coordinates; properties are `x`, `y`, and `z`
+`entity`: Latched onto a game object/entity; properties are `id` to specify an object by hex ID string, or `name` to specify object by name
+
+So to display something at screen coordinates 100, 20, you would say:
+
+`"position": { "coords": "screen", "x": "100", "y": "20" }`
+
+To display something relative to a game object in the world, you could try:
+
+`"position": { "coords": "world", "x": "${_ffxiventity[DEADBEEF].x} + 10", "y": "${_ffxiventity[DEADBEEF].y}", "z": "${_ffxiventity[DEADBEEF].z}" }`
+
+Or if you just want to latch something onto a game object, you can just specify its ID or name:
+
+`"position": { "coords": "entity", "id": "DEADBEEF" }`
+`"position": { "coords": "entity", "name": "My'anime Char'name" }`
