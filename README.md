@@ -56,9 +56,9 @@ Coordinate specifications for some telegram follow the following format:
 
 Where `coords` can be one of:
 
-`screen`: Screen space coordinates; properties are `x`, `y`, and `z`
-`world`: Game world coordinates; properties are `x`, `y`, and `z`
-`entity`: Latched onto a game object/entity; properties are `id` to specify an object by hex ID string, or `name` to specify object by name
+ `screen`: Screen space coordinates; properties are `x`, `y`, and `z`
+ `world`: Game world coordinates; properties are `x`, `y`, and `z`
+ `entity`: Latched onto a game object/entity; properties are `id` to specify an object by hex ID string, or `name` to specify object by name
 
 So to display something at screen coordinates 100, 20, you would say:
 
@@ -70,5 +70,5 @@ To display something relative to a game object in the world, you could try:
 
 Or if you just want to latch something onto a game object, you can just specify its ID or name:
 
-`"position": { "coords": "entity", "id": "DEADBEEF" }`
-`"position": { "coords": "entity", "name": "My'anime Char'name" }`
+ `"position": { "coords": "entity", "id": "DEADBEEF" }`
+ `"position": { "coords": "entity", "name": "My'anime Char'name" }`
