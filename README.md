@@ -48,6 +48,24 @@ Example: `{ "version": 1, "id": 123456, "type": "OpenMap", "payload": { "territo
 `Bundle`: A bundle of telegrams.
 Example: `{ "version": 1, "id": 123456, "type": "Bundle", "payload": [ { "id": 123456, "type": "PrintMessage", "payload": { "message": "hello world" } }, { "id": 123456, "type": "ExecuteCommand", "payload": { "command": "/mk attack1 <1>" } } ] }`
 
+`EnableDoodle`: Enables a doodle to be rendered.
+`DisableDoodle`: Disables a single doodle.
+`DisableDoodleRegex`: Disables multiple doodles by matching their IDs with the supplied regex.
+
+### Doodles
+
+Doodles come currently in three types:
+
+`text`: Render text
+`line`: Draw a line
+`circle`: Draw a circle
+
+#### Text doodle
+
+#### Line doodle
+
+#### Circle doodle
+
 ### Coordinate specification
 
 Coordinate specifications for some telegram follow the following format:
@@ -68,7 +86,7 @@ To display something relative to a game object in the world, you could try:
 
 `"position": { "coords": "world", "x": "${_ffxiventity[DEADBEEF].x} + 10", "y": "${_ffxiventity[DEADBEEF].y}", "z": "${_ffxiventity[DEADBEEF].z}" }`
 
-Or if you just want to latch something onto a game object, you can just specify its ID or name:
+Or if you just want an easy way to latch something onto a game object, you can just specify its ID or name:
 
 `"position": { "coords": "entity", "id": "DEADBEEF" }`  
 `"position": { "coords": "entity", "name": "My'anime Char'name" }`
