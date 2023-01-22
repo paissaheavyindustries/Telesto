@@ -56,18 +56,18 @@ Example: `{ "version": 1, "id": 123456, "type": "Bundle", "payload": [ { "id": 1
 
 Doodles come currently in three types:
 
-`text`: Render text
-`line`: Draw a line
+`text`: Render text  
+`line`: Draw a line  
 `circle`: Draw a circle
 
 #### Properties generic to all doodles
 
-`name`: Name of the doodle
-`type`: Type of the doodle
-`r`: Color red component (0.0 - 1.0), supports numeric expressions
-`g`: Color green component (0.0 - 1.0), supports numeric expressions
-`b`: Color blue component (0.0 - 1.0), supports numeric expressions
-`a`: Color alpha component (0.0 - 1.0), supports numeric expressions
+`name`: Name of the doodle  
+`type`: Type of the doodle  
+`r`: Color red component (0.0 - 1.0), supports numeric expressions  
+`g`: Color green component (0.0 - 1.0), supports numeric expressions  
+`b`: Color blue component (0.0 - 1.0), supports numeric expressions  
+`a`: Color alpha component (0.0 - 1.0), supports numeric expressions  
 `expiresin`: Number of milliseconds the doodle is alive
 
 #### Text doodle
