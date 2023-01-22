@@ -48,9 +48,13 @@ Example: `{ "version": 1, "id": 123456, "type": "OpenMap", "payload": { "territo
 `Bundle`: A bundle of telegrams.
 Example: `{ "version": 1, "id": 123456, "type": "Bundle", "payload": [ { "id": 123456, "type": "PrintMessage", "payload": { "message": "hello world" } }, { "id": 123456, "type": "ExecuteCommand", "payload": { "command": "/mk attack1 <1>" } } ] }`
 
-`EnableDoodle`: Enables a doodle to be rendered.
+`EnableDoodle`: Enables a doodle to be rendered. For examples on doodle creation, scroll down below.
+
 `DisableDoodle`: Disables a single doodle.
+Example: `{ "version": 1, "id": 123456, "type": "DisableDoodle", "payload": { "name": "meow3" } }`
+
 `DisableDoodleRegex`: Disables multiple doodles by matching their IDs with the supplied regex.
+Example: `{ "version": 1, "id": 123456, "type": "DisableDoodleRegex", "payload": { "regex": "meow.*" } }`
 
 ### Doodles
 
@@ -71,6 +75,12 @@ Doodles come currently in three types:
 `expiresin`: Number of milliseconds the doodle is alive
 
 #### Text doodle
+
+`size`: Size of the text
+`position`: Top left coordinate of the text (top left aligned)
+`text`: Text to display
+
+This example would place "HELLO WORLD!" at the bottom of the nearest market board: `{ "version": 1, "id": 123456, "type": "EnableDoodle", "payload": { "name": "meow2", "type": "text", "r": "1", "g": "1", "expiresin": "1000000", "text": "HELLO WORLD!", "size": "20", "position": { "coords": "entity", "name": "Market Board" } } }`
 
 #### Line doodle
 
