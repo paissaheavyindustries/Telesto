@@ -902,6 +902,15 @@ namespace Telesto
             }
         }
 
+        internal Vector3 GetLocalPosition()
+        {
+            if (_cs.LocalPlayer == null)
+            {
+                return new Vector3();
+            }
+            return _cs.LocalPlayer.Position;
+        }
+
         internal Vector3 TranslateToScreen(double x, double y, double z)
         {
             Vector2 tenp;

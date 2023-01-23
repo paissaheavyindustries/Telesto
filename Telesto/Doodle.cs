@@ -37,6 +37,56 @@ namespace Telesto
             internal ulong id { get; set; }
             internal string name { get; set; }
 
+            internal Vector3 UnadjustedPosition(Plugin p)
+            {
+                switch (ct)
+                {
+                    default:
+                    case CoordinateTypeEnum.Screen:
+                        return new Vector3(
+                            (float)p.EvaluateNumericExpression(X),
+                            (float)p.EvaluateNumericExpression(Y),
+                            (float)p.EvaluateNumericExpression(Z)
+                        );
+                        break;
+                    case CoordinateTypeEnum.World:
+                        return new Vector3(
+                            (float)p.EvaluateNumericExpression(X),
+                            (float)p.EvaluateNumericExpression(Y),
+                            (float)p.EvaluateNumericExpression(Z)
+                        );
+                        break;
+                    case CoordinateTypeEnum.Entity:
+                        GameObject go;
+                        if (id > 0)
+                        {
+                            go = p.GetEntityById(id);
+                        }
+                        else
+                        {
+                            go = p.GetEntityByName(name);
+                        }
+                        if (go != null)
+                        {
+                            return new Vector3(
+                                go.Position.X,
+                                go.Position.Y,
+                                go.Position.Z
+                            );
+                        }
+                        else
+                        {
+                            return new Vector3(
+                                (float)p.EvaluateNumericExpression(X),
+                                (float)p.EvaluateNumericExpression(Y),
+                                (float)p.EvaluateNumericExpression(Z)
+                            );
+                        }
+                        break;
+                }
+
+            }
+
             internal void RefreshVector(Plugin p)
             {
                 switch (ct)
@@ -154,7 +204,7 @@ namespace Telesto
                 string[] vals = d["expireson"].ToString().Split(",", StringSplitOptions.TrimEntries);
                 foreach (string val in vals)
                 {
-                    switch (val)
+                    switch (val.ToLower())
                     {
                         case "timed": nt |= ExpiryTypeEnum.Timed; break;
                         case "ondeath": nt |= ExpiryTypeEnum.OnDeath; break;
@@ -177,7 +227,7 @@ namespace Telesto
         {
             string type = d["type"].ToString();
             Doodle doo = null;
-            switch (type)
+            switch (type.ToLower())
             {
                 case "line":
                     doo = new Doodles.Line();
@@ -187,6 +237,15 @@ namespace Telesto
                     break;
                 case "circle":
                     doo = new Doodles.Circle();
+                    break;
+                case "rectangle":
+                    doo = new Doodles.Rectangle();
+                    break;
+                case "waymark":
+                    doo = new Doodles.Waymark();
+                    break;
+                case "arrow":
+                    doo = new Doodles.Arrow();
                     break;
             }
             if (doo != null)
