@@ -106,7 +106,7 @@ Coordinate specifications for some telegram follow the following format:
 
 Where `coords` can be one of:
 
-`screen`: Screen space coordinates; properties are `x`, `y`, and `z`, of which all support numeric expressions  
+`screen`: Screen space coordinates; properties are `x` and `y`, of which both support numeric expressions  
 `world`: Game world coordinates; properties are `x`, `y`, and `z`, of which all support numeric expressions  
 `entity`: Latched onto a game object/entity; properties are `id` to specify an object by hex ID string, or `name` to specify object by name
 
