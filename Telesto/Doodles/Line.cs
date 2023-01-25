@@ -13,6 +13,16 @@ namespace Telesto.Doodles
         internal float chonkiness { get; set; }
         internal string Thickness { get; set; }
 
+        internal override Coordinate GetCoordinateByName(string id)
+        {
+            switch (id.ToLower())
+            {
+                default:
+                case "start": return start;
+                case "end": return end;
+            }
+        }
+
         internal override void Initialize(Dictionary<string, object> d)
         {
             base.Initialize(d);            

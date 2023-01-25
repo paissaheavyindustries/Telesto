@@ -13,6 +13,15 @@ namespace Telesto.Doodles
 
         internal Coordinate position { get; set; }
 
+        internal override Coordinate GetCoordinateByName(string id)
+        {
+            switch (id.ToLower())
+            {
+                default:
+                case "position": return position;
+            }
+        }
+
         internal override void Initialize(Dictionary<string, object> d)
         {
             base.Initialize(d);

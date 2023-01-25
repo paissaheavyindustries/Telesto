@@ -24,6 +24,15 @@ namespace Telesto.Doodles
         internal string Thickness { get; set; }
         internal bool filled { get; set; }
 
+        internal override Coordinate GetCoordinateByName(string id)
+        {
+            switch (id.ToLower())
+            {
+                default:
+                case "position": return position;
+            }
+        }
+
         internal override void Initialize(Dictionary<string, object> d)
         {
             base.Initialize(d);

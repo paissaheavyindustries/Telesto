@@ -5,9 +5,11 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Net.Sockets;
 using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
+using Telesto.Interop;
 using Vector3 = System.Numerics.Vector3;
 using Vector4 = System.Numerics.Vector4;
 
@@ -24,7 +26,9 @@ namespace Telesto
             {
                 Screen,
                 World,
-                Entity
+                Entity,
+                Doodle,
+                Waymark
             }
 
 
@@ -83,8 +87,30 @@ namespace Telesto
                             );
                         }
                         break;
+                    case CoordinateTypeEnum.Doodle:
+                        string[] spl = name.Split("/");
+                        Doodle d = p.GetDoodleByName(spl[0]);
+                        if (d != null)
+                        {
+                            Coordinate c = d.GetCoordinateByName(spl.Length > 1 ? spl[1] : "");
+                            if (c != null)
+                            {
+                                return c.UnadjustedPosition(p);
+                            }
+                        }
+                        return new Vector3();
+                    case CoordinateTypeEnum.Waymark:
+                        Waymark wm = p.GetWaymarkByName(name);
+                        if (wm != null && wm.Active == true)
+                        {
+                            return new Vector3(
+                                wm.X_Float,
+                                wm.Y_Float,
+                                wm.Z_Float
+                            );
+                        }
+                        return new Vector3();
                 }
-
             }
 
             internal void RefreshVector(Plugin p)
@@ -132,11 +158,51 @@ namespace Telesto
                             );
                         }
                         break;
+                    case CoordinateTypeEnum.Doodle:
+                        string[] spl = name.Split("/");
+                        Doodle d = p.GetDoodleByName(spl[0]);
+                        if (d != null)
+                        {
+                            Coordinate c = d.GetCoordinateByName(spl.Length > 1 ? spl[1] : "");
+                            if (c != null)
+                            {
+                                Vector3 uap = c.UnadjustedPosition(p);
+                                cp = p.TranslateToScreen(
+                                    uap.X,
+                                    uap.Y,
+                                    uap.Z
+                                );
+                            }
+                            else
+                            {
+                                cp = new Vector3();
+                            }
+                        }
+                        else
+                        {
+                            cp = new Vector3();
+                        }
+                        break;
+                    case CoordinateTypeEnum.Waymark:                        
+                        Waymark wm = p.GetWaymarkByName(name);
+                        if (wm != null && wm.Active == true)
+                        {
+                            cp = p.TranslateToScreen(
+                                wm.X_Float,
+                                wm.Y_Float,
+                                wm.Z_Float
+                            );
+                        }
+                        else
+                        {
+                            cp = new Vector3();
+                        }
+                        break;
                 }
             }
 
             internal void Initialize(Dictionary<string, object> d)
-            {
+            {                
                 string coords = (d.ContainsKey("coords") == true) ? d["coords"].ToString() : "screen";
                 switch (coords)
                 {
@@ -145,6 +211,12 @@ namespace Telesto
                         break;
                     case "entity":
                         ct = CoordinateTypeEnum.Entity;
+                        break;
+                    case "doodle":
+                        ct = CoordinateTypeEnum.Doodle;
+                        break;
+                    case "waymark":
+                        ct = CoordinateTypeEnum.Waymark;
                         break;
                     default:
                         ct = CoordinateTypeEnum.Screen;
@@ -190,6 +262,8 @@ namespace Telesto
         internal string G { get; set; }
         internal string B { get; set; }
         internal string A { get; set; }
+
+        abstract internal Coordinate GetCoordinateByName(string id);
 
         internal virtual void Initialize(Dictionary<string, object> d)
         {
@@ -246,6 +320,9 @@ namespace Telesto
                     break;
                 case "arrow":
                     doo = new Doodles.Arrow();
+                    break;
+                case "beam":
+                    doo = new Doodles.Beam();
                     break;
             }
             if (doo != null)

@@ -2,7 +2,7 @@
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace Telesto
+namespace Telesto.Interop
 {
 
     [StructLayout(LayoutKind.Explicit)]
@@ -17,7 +17,7 @@ namespace Telesto
 
         [FieldOffset(16)]
         private ulong len;
-        
+
         [FieldOffset(24)]
         private ulong unk2;
 
@@ -27,14 +27,14 @@ namespace Telesto
             p = Marshal.AllocHGlobal(b.Length + 30);
             Marshal.Copy(b, 0, p, b.Length);
             Marshal.WriteByte(p + b.Length, 0);
-            this.len = (ulong)(b.Length + 1);
-            this.unk1 = 64;
-            this.unk2 = 0;
+            len = (ulong)(b.Length + 1);
+            unk1 = 64;
+            unk2 = 0;
         }
 
         public void Dispose()
         {
-            Marshal.FreeHGlobal(this.p);
+            Marshal.FreeHGlobal(p);
         }
 
     }

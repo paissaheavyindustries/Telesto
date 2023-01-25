@@ -26,6 +26,9 @@ using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Game.ClientState.Objects.SubKinds;
 using FFXIVClientStructs.FFXIV.Client.Game.Character;
 using BattleChara = Dalamud.Game.ClientState.Objects.Types.BattleChara;
+using Dalamud.Game.Text.SeStringHandling;
+using System.Reflection;
+using Telesto.Interop;
 
 namespace Telesto
 {
@@ -198,8 +201,10 @@ namespace Telesto
         private string _debugTeleTest = "";
         private bool _configOpen = false;
         private bool _loggedIn = false;
-        private bool _funcPtrFound = false;
+        private bool _funcPtrChatboxFound = false;
+        private bool _waymarksObjFound = false;
         private bool _destroyDoodles = false;
+        private Waymarks _waymarks = new Waymarks();
 
         private bool _cfgAutostartEndpoint;
         private bool _territoryChanged = true;
@@ -213,7 +218,9 @@ namespace Telesto
         private static MathParser mp = new MathParser();
 
         private delegate void PostCommandDelegate(IntPtr ui, IntPtr cmd, IntPtr unk1, byte unk2);
+        private delegate void GetWaymarkDelegate(IntPtr pObj, IntPtr pData);
         private IntPtr _chatBoxModPtr = IntPtr.Zero;
+        private IntPtr _waymarksObj = IntPtr.Zero;
         private PostCommandDelegate postCmdFuncptr = null;
 
         private Dictionary<string, Doodle> Doodles = new Dictionary<string, Doodle>();
@@ -269,7 +276,8 @@ namespace Telesto
 
         private void ResetSigs()
         {
-            _funcPtrFound = false;
+            _funcPtrChatboxFound = false;
+            _waymarksObjFound = false;
         }
 
         private void FindSigs()
@@ -279,13 +287,24 @@ namespace Telesto
             if (_chatBoxModPtr != IntPtr.Zero)
             {
                 postCmdFuncptr = Marshal.GetDelegateForFunctionPointer<PostCommandDelegate>(_chatBoxModPtr);
-                _funcPtrFound = (postCmdFuncptr != null);
+                _funcPtrChatboxFound = (postCmdFuncptr != null);
+            }
+            // sig from PunishedPineapple/WaymarkPresetPlugin
+            _waymarksObj = SearchForStaticAddress("41 80 F9 08 7C BB 48 8D ?? ?? ?? 48 8D ?? ?? ?? ?? ?? E8 ?? ?? ?? ?? 84 C0 0F 94 C0 EB 19", 11);
+            if (_waymarksObj != IntPtr.Zero)
+            {
+                _waymarksObjFound = (_waymarksObj != null);
             }
         }
 
         private IntPtr SearchForSig(string sig)
         {
             return TargetModuleScanner.ScanText(sig);
+        }
+
+        private IntPtr SearchForStaticAddress(string sig, int offset)
+        {
+            return TargetModuleScanner.GetStaticAddressFromSig(sig, 11);
         }
 
         private void _cs_Logout(object sender, EventArgs e)
@@ -398,8 +417,8 @@ namespace Telesto
             if (ImGui.BeginTabItem("Debug"))
             {
                 ImGui.Text(String.Format("Logged in: {0}", _loggedIn));
-                ImGui.Text(String.Format("Function pointer found: {0}", _funcPtrFound));
-                ImGui.Text(String.Format("Function pointer: {0:X}", _chatBoxModPtr));
+                ImGui.Text(String.Format("Pointers found: cmd={0} wmo={1}", _funcPtrChatboxFound, _waymarksObjFound));
+                ImGui.Text(String.Format("Pointer: cmd={0:X} wmo={1:x}", _chatBoxModPtr, _waymarksObj));
                 ImGui.Text(String.Format("Request queue size: {0}", queueSize));
                 ImGui.Text(String.Format("Requests served: {0}", _reqServed));
                 ImGui.Separator();
@@ -466,7 +485,7 @@ namespace Telesto
 
         public unsafe void SubmitCommand(string cmd)
         {
-            if (_loggedIn == false || _funcPtrFound == false)
+            if (_loggedIn == false || _funcPtrChatboxFound == false)
             {
                 return;
             }
@@ -490,6 +509,24 @@ namespace Telesto
                         Marshal.FreeHGlobal(p);
                     }
                 }
+            }
+        }
+
+        public unsafe void RefreshWaymarks()
+        {
+            if (_loggedIn == false || _waymarksObjFound == false)
+            {
+                return;
+            }
+            try
+            {
+                lock (_waymarks)
+                {
+                    Marshal.PtrToStructure<Waymarks>(_waymarksObj + 0x1b0, _waymarks);
+                }
+            }
+            catch (Exception ex)
+            {
             }
         }
 
@@ -664,6 +701,43 @@ namespace Telesto
                 if (String.Compare(go.Name.TextValue, id, true) == 0)
                 {
                     return go;
+                }
+            }
+            return null;
+        }
+
+        internal Doodle GetDoodleByName(string id)
+        {
+            lock (Doodles)
+            {
+                if (Doodles.ContainsKey(id) == true)
+                {
+                    return Doodles[id];
+                }
+            }
+            return null;
+        }
+
+        internal Waymark GetWaymarkByName(string id)
+        {
+            Waymark wm = null;
+            lock (_waymarks)
+            {
+                RefreshWaymarks();
+                switch (id != null ? id.ToLower() : "")
+                {
+                    case "a": wm = _waymarks.A; break;
+                    case "b": wm = _waymarks.B; break;
+                    case "c": wm = _waymarks.C; break;
+                    case "d": wm = _waymarks.D; break;
+                    case "1": wm = _waymarks.One; break;
+                    case "2": wm = _waymarks.Two; break;
+                    case "3": wm = _waymarks.Three; break;
+                    case "4": wm = _waymarks.Four; break;
+                }
+                if (wm != null)
+                {
+                    return wm.Duplicate();
                 }
             }
             return null;
