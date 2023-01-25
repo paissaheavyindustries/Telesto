@@ -1,5 +1,9 @@
 ## Documentation
 
+Telesto allows Triggernometry some means to interact with Final Fantasy XIV directly. To read more about Triggernometry, head over to:
+
+https://github.com/paissaheavyindustries/Triggernometry
+
 Telesto has a Wiki, containing useful information and documentation:
 
 https://github.com/paissaheavyindustries/Telesto/wiki
