@@ -29,6 +29,14 @@ using BattleChara = Dalamud.Game.ClientState.Objects.Types.BattleChara;
 using Dalamud.Game.Text.SeStringHandling;
 using System.Reflection;
 using Telesto.Interop;
+using Character = Dalamud.Game.ClientState.Objects.Types.Character;
+using StructCharacter = FFXIVClientStructs.FFXIV.Client.Game.Character.Character;
+using Dalamud.Game.ClientState.JobGauge.Enums;
+using static Telesto.Endpoint;
+using System.IO;
+using System.Net;
+using static System.Net.WebRequestMethods;
+using System.Threading.Tasks;
 
 namespace Telesto
 {
@@ -37,12 +45,42 @@ namespace Telesto
     public sealed class Plugin : IDalamudPlugin
     {
 
+        private class Subscription
+        {
+
+            public string id { get; set; }
+            public string type { get; set; }
+            public string endpoint { get; set; }
+
+        }
+
         private class Response
         {
 
             public int version { get; set; } = 1;
             public int id { get; set; } = 0;
             public object response { get; set; } = null;
+
+        }
+
+        private class Notification
+        {
+
+            public int version { get; set; } = 1;
+            public int id { get; set; } = 0;
+            public string notificationid { get; set; } = "undefined";
+            public string notificationtype { get; set; } = "undefined";
+            public object payload { get; set; } = null;
+
+        }
+
+        private class PropertyChangeNotification
+        {
+
+            public string objectid { get; set; } = "";
+            public string name { get; set; } = "";
+            public string oldvalue { get; set; } = "";
+            public string newvalue { get; set; } = "";
 
         }
 
@@ -197,6 +235,16 @@ namespace Telesto
         private ClientState _cs { get; init; }
         private ObjectTable _ot { get; init; }
         private PartyList _pl { get; init; }
+        private Dictionary<uint, short> TransformationIds = new Dictionary<uint, short>();
+        private Dictionary<uint, uint> HpValues = new Dictionary<uint, uint>();
+        private Dictionary<string, Subscription> Subscriptions = new Dictionary<string, Subscription>();
+        private ManualResetEvent SendPendingEvent = new ManualResetEvent(false);
+        private ManualResetEvent StopEvent = new ManualResetEvent(false);
+        private Thread SendThread = null;
+        private bool _pollForTransformationIdChanges = false;
+        private bool _pollForHpChanges = false;
+        private bool _sendThreadRunning = false;
+        private DateTime _sendLastTimestamp = DateTime.Now;
 
         private string _debugTeleTest = "";
         private bool _configOpen = false;
@@ -211,6 +259,7 @@ namespace Telesto
         private string _cfgHttpEndpoint = "";
 
         private int _reqServed = 0;
+        internal int _sentTelegrams = 0;
         private int _numDoodles = 0;
         internal static Regex rex = new Regex(@"\$\{(?<id>[^\}\{\$]*)\}");
         internal static Regex rexnum = new Regex(@"\$(?<id>[0-9]+)");
@@ -225,6 +274,7 @@ namespace Telesto
 
         private Dictionary<string, Doodle> Doodles = new Dictionary<string, Doodle>();
         private Queue<PendingRequest> Requests = new Queue<PendingRequest>();
+        private Queue<Tuple<string, string>> Sends = new Queue<Tuple<string, string>>();
 
         [PluginService]
         public static SigScanner TargetModuleScanner { get; private set; }
@@ -267,6 +317,9 @@ namespace Telesto
             {
                 _ep.Start();
             }
+            SendThread = new Thread(new ParameterizedThreadStart(SendThreadProc));
+            SendThread.Name = "Telesto send thread";
+            SendThread.Start(this);
         }
 
         private void _cs_TerritoryChanged(object sender, ushort e)
@@ -293,7 +346,7 @@ namespace Telesto
             _waymarksObj = SearchForStaticAddress("41 80 F9 08 7C BB 48 8D ?? ?? ?? 48 8D ?? ?? ?? ?? ?? E8 ?? ?? ?? ?? 84 C0 0F 94 C0 EB 19", 11);
             if (_waymarksObj != IntPtr.Zero)
             {
-                _waymarksObjFound = (_waymarksObj != null);
+                _waymarksObjFound = (_waymarksObj != IntPtr.Zero);
             }
         }
 
@@ -333,17 +386,59 @@ namespace Telesto
             }
         }
 
+        internal void QueueSendTelegram(string url, string tele)
+        {
+            lock (Sends)
+            {
+                Sends.Enqueue(new Tuple<string, string>(url, tele));
+                SendPendingEvent.Set();
+            }
+        }
+
         public void Dispose()
         {
-            if (_ep != null)
+            if (StopEvent != null)
             {
-                _ep.Dispose();
+                StopEvent.Set();
+            }
+            try
+            {
+                if (_ep != null)
+                {
+                    _ep.Dispose();
+                    _ep = null;
+                }
+            }
+            catch (Exception)
+            {
             }
             _cm.RemoveHandler("/telesto");
             _cs.Logout -= _cs_Logout;
             _cs.Login -= _cs_Login;
             _pi.UiBuilder.Draw -= DrawUI;
             _pi.UiBuilder.OpenConfigUi -= OpenConfigUI;
+            try
+            {
+                if (StopEvent != null)
+                {
+                    StopEvent.Dispose();
+                    StopEvent = null;
+                }
+            }
+            catch (Exception)
+            {
+            }
+            try
+            { 
+                if (SendPendingEvent != null)
+                {
+                    SendPendingEvent.Dispose();
+                    SendPendingEvent = null;
+                }
+            }
+            catch (Exception)
+            {
+            }
         }
 
         private void OnCommand(string command, string args)
@@ -375,6 +470,10 @@ namespace Telesto
             catch (Exception ex)
             {
                 _cg.PrintError(String.Format("Exception in telegram processing: {0}", ex.Message));
+            }
+            if (_pollForTransformationIdChanges == true || _pollForHpChanges == true)
+            {
+                PollForCharacterChanges(_pollForTransformationIdChanges, _pollForHpChanges);
             }
             if (_configOpen == false)
             {
@@ -421,6 +520,26 @@ namespace Telesto
                 ImGui.Text(String.Format("Pointer: cmd={0:X} wmo={1:x}", _chatBoxModPtr, _waymarksObj));
                 ImGui.Text(String.Format("Request queue size: {0}", queueSize));
                 ImGui.Text(String.Format("Requests served: {0}", _reqServed));
+                ImGui.Separator();
+                lock (Sends)
+                {
+                    ImGui.Text(String.Format("Sent telegrams: {0} ({1} queued, running={2}, last={3})", _sentTelegrams, Sends.Count, _sendThreadRunning, _sendLastTimestamp));
+                }
+                lock (Subscriptions)
+                {
+                    int activesubs = Subscriptions.Count;
+                    var types = (from ix in Subscriptions.Values select ix.type).Distinct();
+                    string typesdesc = String.Join(", ", types);
+                    ImGui.Text(String.Format("Active subs: {0} ({1})", activesubs, typesdesc));
+                }
+                ImGui.Text(String.Format("Active polls: trid={0} hp={1}", _pollForTransformationIdChanges, _pollForHpChanges));
+                if (ImGui.Button("Remove all subs"))
+                {
+                    lock (Subscriptions)
+                    {
+                        Subscriptions.Clear();
+                    }
+                }
                 ImGui.Separator();
                 ImGui.Text(String.Format("Doodles active: {0}", _numDoodles));
                 if (ImGui.Button("Destroy all doodles"))
@@ -525,7 +644,7 @@ namespace Telesto
                     Marshal.PtrToStructure<Waymarks>(_waymarksObj + 0x1b0, _waymarks);
                 }
             }
-            catch (Exception ex)
+            catch (Exception)
             {
             }
         }
@@ -576,6 +695,10 @@ namespace Telesto
                     return HandleDisableDoodle(d["payload"]);
                 case "disabledoodleregex":
                     return HandleDisableDoodleRegex(d["payload"]);
+                case "subscribe":
+                    return HandleSubscribe(d["payload"]);
+                case "unsubscribe":
+                    return HandleUnsubscribe(d["payload"]);
             }
             _cg.PrintError(String.Format("Unhandled Telesto telegram type '{0}'", d["type"].ToString()));
             return null;
@@ -645,7 +768,7 @@ namespace Telesto
 
         private unsafe object HandleGetPartyMembers()
         {
-            AddonPartyList *pl = (AddonPartyList *)_gg.GetAddonByName("_PartyList", 1);
+            AddonPartyList* pl = (AddonPartyList*)_gg.GetAddonByName("_PartyList", 1);
             IntPtr pla = _gg.FindAgentInterface(pl);
             List<Combatant> cbs = new List<Combatant>();
             Dictionary<string, PartyMember> pls = new Dictionary<string, PartyMember>();
@@ -654,10 +777,10 @@ namespace Telesto
                 pls[_pl[i].Name.TextValue] = _pl[i];
             }
             for (int i = 0; i < pl->MemberCount; i++)
-            {                
+            {
                 IntPtr p = (pla + (0x14ca + 0xd8 * i));
                 Utf8String s = pl->PartyMember[i].Name->NodeText;
-                string dispname = UTF8StringToString(s);                
+                string dispname = UTF8StringToString(s);
                 string fullname = Marshal.PtrToStringUTF8(p);
                 if (dispname[0] == '\u0000')
                 {
@@ -686,7 +809,7 @@ namespace Telesto
 
         private object HandlePing()
         {
-            return "pong";        
+            return "pong";
         }
 
         internal GameObject GetEntityById(ulong id)
@@ -848,12 +971,12 @@ namespace Telesto
         }
 
         private string GetEntityProperty(GameObject go, string prop)
-        {            
+        {
             switch (prop.ToLower())
             {
                 case "name":
                     return go.Name.TextValue;
-                case "job": 
+                case "job":
                     return TranslateJob(go is BattleChara ? ((BattleChara)go).ClassJob.Id.ToString() : "0");
                 case "jobid":
                     return go is BattleChara ? ((BattleChara)go).ClassJob.Id.ToString() : "0";
@@ -989,7 +1112,7 @@ namespace Telesto
         {
             Vector2 tenp;
             _gg.WorldToScreen(
-                new Vector3((float)x, (float)y, (float)z), 
+                new Vector3((float)x, (float)y, (float)z),
                 out tenp
             );
             return new Vector3(tenp.X, tenp.Y, (float)z);
@@ -1041,6 +1164,86 @@ namespace Telesto
                 }
             }
             return null;
+        }
+
+        private object HandleSubscribe(object o)
+        {
+            Dictionary<string, object> d = (Dictionary<string, object>)o;
+            string id = d["id"].ToString().ToLower();
+            string type = d["type"].ToString().ToLower();
+            string endpoint = d["endpoint"].ToString();
+            lock (Subscriptions)
+            {
+                Subscription s = null;
+                if (Subscriptions.ContainsKey(id) == true)
+                {
+                    s = Subscriptions[id];
+                    if (s.type != type)
+                    {
+                        TurnSubscriptionTypeOff(s.type);
+                    }
+                }
+                else
+                {
+                    s = new Subscription();
+                    Subscriptions[id] = s;
+                }
+                s.id = id;
+                s.type = type;
+                s.endpoint = endpoint;
+                TurnSubscriptionTypeOn(s.type);
+            }
+            return null;
+        }
+
+        private object HandleUnsubscribe(object o)
+        {
+            Dictionary<string, object> d = (Dictionary<string, object>)o;
+            string id = d["id"].ToString().ToLower();
+            string gonetype = "";
+            lock (Subscriptions)
+            {
+                if (Subscriptions.ContainsKey(id) == true)
+                {
+                    gonetype = Subscriptions[id].type;
+                    Subscriptions.Remove(id);
+                }
+                if (gonetype != "")
+                {
+                    var rem = (from ix in Subscriptions.Values where ix.type == gonetype select ix).Count();
+                    if (rem == 0)
+                    {
+                        TurnSubscriptionTypeOff(gonetype);
+                    }
+                }
+            }
+            return null;
+        }
+
+        private void TurnSubscriptionTypeOn(string id)
+        {
+            switch (id)
+            {
+                case "trid":
+                    _pollForTransformationIdChanges = true;
+                    break;
+                case "hp":
+                    _pollForHpChanges = true;
+                    break;
+            }
+        }
+
+        private void TurnSubscriptionTypeOff(string id)
+        {
+            switch (id)
+            {
+                case "trid":
+                    _pollForTransformationIdChanges = false;
+                    break;
+                case "hp":
+                    _pollForHpChanges = false;
+                    break;
+            }
         }
 
         private void DrawDoodles()
@@ -1122,6 +1325,199 @@ namespace Telesto
                 _destroyDoodles = false;
             }
         }
-    }
 
+        private unsafe void PollForCharacterChanges(bool polltrid, bool pollhp)
+        {
+            foreach (GameObject go in _ot)
+            {                
+                if (pollhp == true && go is BattleChara)
+                {
+                    BattleChara c = (BattleChara)go;
+                    uint hp = c.CurrentHp;
+                    lock (HpValues)
+                    {
+                        if (HpValues.ContainsKey(c.ObjectId) == false)
+                        {
+                            HpValues[c.ObjectId] = hp;
+                            HpChangeNotify(go, 0, hp);
+                        }
+                        else
+                        {
+                            uint oldhp = HpValues[c.ObjectId];
+                            if (oldhp != hp)
+                            {
+                                HpValues[c.ObjectId] = hp;
+                                HpChangeNotify(go, oldhp, hp);
+                            }
+                        }
+                    }
+                }
+                if (polltrid == true && _ot is Character)
+                {
+                    Character c = (Character)go;
+                    StructCharacter* cx = (StructCharacter*)c.Address;
+                    short trid = cx->TransformationId;
+                    lock (TransformationIds)
+                    {
+                        if (TransformationIds.ContainsKey(c.ObjectId) == false)
+                        {
+                            TransformationIds[c.ObjectId] = trid;
+                            TransformationChangeNotify(go, 0, trid);
+                        }
+                        else
+                        {
+                            short oldtrid = TransformationIds[c.ObjectId];
+                            if (oldtrid != trid)
+                            {
+                                TransformationIds[c.ObjectId] = trid;
+                                TransformationChangeNotify(go, oldtrid, trid);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        private void TransformationChangeNotify(GameObject go, short oldtrid, short newtrid)
+        {
+            List<Tuple<string, string>> notifs;
+            lock (Subscriptions)
+            {                
+                notifs = (from ix in Subscriptions.Values where ix.type == "trid" select new Tuple<string, string>(ix.id, ix.endpoint)).Distinct().ToList();
+            }
+            foreach (var notif in notifs)
+            {
+                QueueSendTelegram(
+                    notif.Item2,
+                    JsonSerializer.Serialize<Notification>(
+                        new Notification()
+                        {
+                            id = 1,
+                            version = 1,
+                            notificationid = notif.Item1,
+                            notificationtype = "trid",
+                            payload = new PropertyChangeNotification()
+                            {
+                                objectid = go.ObjectId.ToString("X8"),
+                                name = go.Name.TextValue,
+                                oldvalue = oldtrid.ToString(),
+                                newvalue = newtrid.ToString()
+                            }
+                        }
+                    )
+                );
+            }
+        }
+
+        private void HpChangeNotify(GameObject go, uint oldhp, uint newhp)
+        {
+            List<Tuple<string, string>> notifs;
+            lock (Subscriptions)
+            {
+                notifs = (from ix in Subscriptions.Values where ix.type == "hp" select new Tuple<string, string>(ix.id, ix.endpoint)).Distinct().ToList();
+            }
+            foreach (var notif in notifs)
+            {
+                QueueSendTelegram(
+                    notif.Item2,
+                    JsonSerializer.Serialize<Notification>(
+                        new Notification()
+                        {
+                            id = 1,
+                            version = 1,
+                            notificationid = notif.Item1,
+                            notificationtype = "hp",
+                            payload = new PropertyChangeNotification()
+                            {
+                                objectid = go.ObjectId.ToString("X8"),
+                                name = go.Name.TextValue,
+                                oldvalue = oldhp.ToString(),
+                                newvalue = newhp.ToString()
+                            }
+                        }
+                    )
+                );
+            }
+        }
+
+        private Tuple<int, string> SendJson(string url, string json)
+        {
+            try
+            {
+                var httpWebRequest = (HttpWebRequest)WebRequest.Create(url);
+                httpWebRequest.ContentType = "application/json";
+                httpWebRequest.Method = "POST";
+                using (var streamWriter = new StreamWriter(httpWebRequest.GetRequestStream()))
+                {
+                    streamWriter.Write(json);
+                    streamWriter.Flush();
+                    streamWriter.Close();
+                }
+                var httpResponse = (HttpWebResponse)httpWebRequest.GetResponse();
+                using (var streamReader = new StreamReader(httpResponse.GetResponseStream()))
+                {
+                    return new Tuple<int, string>((int)httpResponse.StatusCode, streamReader.ReadToEnd());
+                }
+            }
+            catch (Exception)
+            {
+                return new Tuple<int, string>(-1, "");
+            }
+        }
+
+        public void SendThreadProc(object o)
+        {
+            _sendThreadRunning = true;
+            Plugin p = (Plugin)o;
+            WaitHandle[] wh = new WaitHandle[2];
+            wh[0] = p.StopEvent;
+            wh[1] = p.SendPendingEvent;
+            while (true)
+            {
+                switch (WaitHandle.WaitAny(wh, Timeout.Infinite))
+                {
+                    case 0:
+                        {
+                            _sendThreadRunning = false;
+                            return;
+                        }
+                    case 1:
+                        {
+                            Tuple<string, string> send = null;
+                            lock (Sends)
+                            {
+                                _sendLastTimestamp = DateTime.Now;
+                                if (Sends.Count > 0)
+                                {
+                                    send = Sends.Dequeue();
+                                }
+                                if (Sends.Count == 0)
+                                {
+                                    SendPendingEvent.Reset();
+                                }
+                            }
+                            if (send != null)
+                            {
+                                _sentTelegrams++;
+                                Task t = new Task(() =>
+                                {
+                                    try
+                                    {
+                                        SendJson(send.Item1, send.Item2);
+                                    }
+                                    catch (Exception)
+                                    {
+                                    }
+                                }
+                                );
+                                t.Start();
+                            }
+                        }
+                        break;
+                }
+            }            
+        }
+
+ 
+    }
 }
