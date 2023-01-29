@@ -140,7 +140,7 @@ namespace Telesto
                                 byte[] buf = Encoding.UTF8.GetBytes(resp);
                                 s.Write(buf, 0, buf.Length);
                             }
-                            plug._sentTelegrams++;
+                            plug._sentResponses++;
                             hctx.Response.StatusCode = 200;
                         }
                         catch (Exception ex)

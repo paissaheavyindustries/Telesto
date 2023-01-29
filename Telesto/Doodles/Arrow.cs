@@ -37,12 +37,12 @@ namespace Telesto.Doodles
         {
             base.Initialize(d);
             Thickness = (d.ContainsKey("thickness") == true) ? d["thickness"].ToString() : "3";
-            from = new Coordinate();
+            from = new Coordinate() { doo = this };
             if (d.ContainsKey("from") == true)
             {
                 from.Initialize((Dictionary<string, object>)d["from"]);
             }
-            to = new Coordinate();
+            to = new Coordinate() { doo = this };
             if (d.ContainsKey("to") == true)
             {
                 to.Initialize((Dictionary<string, object>)d["to"]);
@@ -67,7 +67,7 @@ namespace Telesto.Doodles
             }
             from.RefreshVector(p);
             to.RefreshVector(p);
-            linechonk = (float)p.EvaluateNumericExpression(Thickness);
+            linechonk = (float)p.EvaluateNumericExpression(this, Thickness);
             return true;
         }
 

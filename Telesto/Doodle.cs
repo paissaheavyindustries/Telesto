@@ -31,7 +31,7 @@ namespace Telesto
                 Waymark
             }
 
-
+            internal Doodle doo { get; set; }
             internal CoordinateTypeEnum ct { get; set; }
             internal Vector3 cp { get; set; }
 
@@ -48,16 +48,16 @@ namespace Telesto
                     default:
                     case CoordinateTypeEnum.Screen:
                         return new Vector3(
-                            (float)p.EvaluateNumericExpression(X),
-                            (float)p.EvaluateNumericExpression(Y),
-                            (float)p.EvaluateNumericExpression(Z)
+                            (float)p.EvaluateNumericExpression(doo, X),
+                            (float)p.EvaluateNumericExpression(doo, Y),
+                            (float)p.EvaluateNumericExpression(doo, Z)
                         );
                         break;
                     case CoordinateTypeEnum.World:
                         return new Vector3(
-                            (float)p.EvaluateNumericExpression(X),
-                            (float)p.EvaluateNumericExpression(Y),
-                            (float)p.EvaluateNumericExpression(Z)
+                            (float)p.EvaluateNumericExpression(doo, X),
+                            (float)p.EvaluateNumericExpression(doo, Y),
+                            (float)p.EvaluateNumericExpression(doo, Z)
                         );
                         break;
                     case CoordinateTypeEnum.Entity:
@@ -81,9 +81,9 @@ namespace Telesto
                         else
                         {
                             return new Vector3(
-                                (float)p.EvaluateNumericExpression(X),
-                                (float)p.EvaluateNumericExpression(Y),
-                                (float)p.EvaluateNumericExpression(Z)
+                                (float)p.EvaluateNumericExpression(doo, X),
+                                (float)p.EvaluateNumericExpression(doo, Y),
+                                (float)p.EvaluateNumericExpression(doo, Z)
                             );
                         }
                         break;
@@ -119,16 +119,16 @@ namespace Telesto
                 {
                     case CoordinateTypeEnum.Screen:
                         cp = new Vector3(
-                            (float)p.EvaluateNumericExpression(X),
-                            (float)p.EvaluateNumericExpression(Y),
-                            (float)p.EvaluateNumericExpression(Z)
+                            (float)p.EvaluateNumericExpression(doo, X),
+                            (float)p.EvaluateNumericExpression(doo, Y),
+                            (float)p.EvaluateNumericExpression(doo, Z)
                         );
                         break;
                     case CoordinateTypeEnum.World:
                         cp = p.TranslateToScreen(
-                            p.EvaluateNumericExpression(X),
-                            p.EvaluateNumericExpression(Y),
-                            p.EvaluateNumericExpression(Z)
+                            p.EvaluateNumericExpression(doo, X),
+                            p.EvaluateNumericExpression(doo, Y),
+                            p.EvaluateNumericExpression(doo, Z)
                         );
                         break;
                     case CoordinateTypeEnum.Entity:
@@ -152,9 +152,9 @@ namespace Telesto
                         else
                         {
                             cp = p.TranslateToScreen(
-                                p.EvaluateNumericExpression(X),
-                                p.EvaluateNumericExpression(Y),
-                                p.EvaluateNumericExpression(Z)
+                                p.EvaluateNumericExpression(doo, X),
+                                p.EvaluateNumericExpression(doo, Y),
+                                p.EvaluateNumericExpression(doo, Z)
                             );
                         }
                         break;
@@ -254,6 +254,7 @@ namespace Telesto
 
         internal Plugin p { get; set; }
         internal string Name { get; set; }
+        internal DateTime Created { get; set; } = DateTime.UtcNow;
         internal DateTime ExpiresAt { get; set; } = DateTime.UtcNow.AddSeconds(5);
         internal ExpiryTypeEnum ExpiresOn { get; set; } = ExpiryTypeEnum.Timed | ExpiryTypeEnum.NotLoggedIn | ExpiryTypeEnum.OnZoneChange | ExpiryTypeEnum.OnWipe;
         internal Vector4 col { get; set; } = new Vector4();
@@ -342,10 +343,10 @@ namespace Telesto
                 }
             }
             col = new Vector4(
-                (float)p.EvaluateNumericExpression(R),
-                (float)p.EvaluateNumericExpression(G),
-                (float)p.EvaluateNumericExpression(B),
-                (float)p.EvaluateNumericExpression(A)
+                (float)p.EvaluateNumericExpression(this, R),
+                (float)p.EvaluateNumericExpression(this, G),
+                (float)p.EvaluateNumericExpression(this, B),
+                (float)p.EvaluateNumericExpression(this, A)
             );
             return true;
         }

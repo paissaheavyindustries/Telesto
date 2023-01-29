@@ -26,7 +26,7 @@ namespace Telesto.Doodles
         {
             base.Initialize(d);
             Size = (d.ContainsKey("size") == true) ? d["size"].ToString() : "10";
-            position = new Coordinate();
+            position = new Coordinate() { doo = this };
             if (d.ContainsKey("position") == true)
             {
                 position.Initialize((Dictionary<string, object>)d["position"]);
@@ -41,7 +41,7 @@ namespace Telesto.Doodles
                 return false;
             }
             position.RefreshVector(p);
-            chonkiness = (float)p.EvaluateNumericExpression(Size);
+            chonkiness = (float)p.EvaluateNumericExpression(this, Size);
             return true;
         }
 

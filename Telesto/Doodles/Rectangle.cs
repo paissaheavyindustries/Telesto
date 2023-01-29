@@ -41,12 +41,12 @@ namespace Telesto.Doodles
             filled = false;
             bool.TryParse(fill, out bool filledtemp);
             filled = filledtemp;
-            pos1 = new Coordinate();
+            pos1 = new Coordinate() { doo = this };
             if (d.ContainsKey("pos1") == true)
             {
                 pos1.Initialize((Dictionary<string, object>)d["pos1"]);
             }
-            pos2 = new Coordinate();
+            pos2 = new Coordinate() { doo = this };
             if (d.ContainsKey("pos2") == true)
             {
                 pos2.Initialize((Dictionary<string, object>)d["pos2"]);
@@ -71,7 +71,7 @@ namespace Telesto.Doodles
             }
             pos1.RefreshVector(p);
             pos2.RefreshVector(p);
-            linechonk = (float)p.EvaluateNumericExpression(Thickness);
+            linechonk = (float)p.EvaluateNumericExpression(this, Thickness);
             return true;
         }
 

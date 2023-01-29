@@ -25,7 +25,7 @@ namespace Telesto.Doodles
         internal override void Initialize(Dictionary<string, object> d)
         {
             base.Initialize(d);
-            position = new Coordinate();
+            position = new Coordinate() { doo = this };
             if (d.ContainsKey("position") == true)
             {
                 position.Initialize((Dictionary<string, object>)d["position"]);

@@ -42,7 +42,7 @@ namespace Telesto.Doodles
             filled = false;
             bool.TryParse(fill, out bool filledtemp);
             filled = filledtemp;
-            position = new Coordinate();
+            position = new Coordinate() { doo = this };
             if (d.ContainsKey("position") == true)
             {
                 position.Initialize((Dictionary<string, object>)d["position"]);
@@ -66,8 +66,8 @@ namespace Telesto.Doodles
                 return false;
             }
             position.RefreshVector(p);
-            radiuschonk = (float)p.EvaluateNumericExpression(Radius);
-            linechonk = (float)p.EvaluateNumericExpression(Thickness);
+            radiuschonk = (float)p.EvaluateNumericExpression(this, Radius);
+            linechonk = (float)p.EvaluateNumericExpression(this, Thickness);
             return true;
         }
 

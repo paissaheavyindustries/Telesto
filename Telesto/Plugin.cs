@@ -45,15 +45,6 @@ namespace Telesto
     public sealed class Plugin : IDalamudPlugin
     {
 
-        private class Subscription
-        {
-
-            public string id { get; set; }
-            public string type { get; set; }
-            public string endpoint { get; set; }
-
-        }
-
         private class Response
         {
 
@@ -230,19 +221,16 @@ namespace Telesto
 
         private DalamudPluginInterface _pi { get; init; }
         private CommandManager _cm { get; init; }
-        private ChatGui _cg { get; init; }
+        internal ChatGui _cg { get; init; }
         private GameGui _gg { get; init; }
         private ClientState _cs { get; init; }
         private ObjectTable _ot { get; init; }
         private PartyList _pl { get; init; }
-        private Dictionary<uint, short> TransformationIds = new Dictionary<uint, short>();
-        private Dictionary<uint, uint> HpValues = new Dictionary<uint, uint>();
         private Dictionary<string, Subscription> Subscriptions = new Dictionary<string, Subscription>();
         private ManualResetEvent SendPendingEvent = new ManualResetEvent(false);
         private ManualResetEvent StopEvent = new ManualResetEvent(false);
         private Thread SendThread = null;
-        private bool _pollForTransformationIdChanges = false;
-        private bool _pollForHpChanges = false;
+        private bool _pollForMemory = false;
         private bool _sendThreadRunning = false;
         private DateTime _sendLastTimestamp = DateTime.Now;
 
@@ -259,10 +247,12 @@ namespace Telesto
         private string _cfgHttpEndpoint = "";
 
         private int _reqServed = 0;
+        internal int _sentResponses = 0;
         internal int _sentTelegrams = 0;
         private int _numDoodles = 0;
         internal static Regex rex = new Regex(@"\$\{(?<id>[^\}\{\$]*)\}");
         internal static Regex rexnum = new Regex(@"\$(?<id>[0-9]+)");
+        internal static Regex rexlidx = new Regex(@"(?<name>[^\[]+)\[(?<index>.+?)\]");
         internal static Regex rexnump = new Regex(@"\[(?<index>.+?)\]\.(?<prop>[a-zA-Z]+)");
         private static MathParser mp = new MathParser();
 
@@ -471,9 +461,9 @@ namespace Telesto
             {
                 _cg.PrintError(String.Format("Exception in telegram processing: {0}", ex.Message));
             }
-            if (_pollForTransformationIdChanges == true || _pollForHpChanges == true)
+            if (_pollForMemory == true)
             {
-                PollForCharacterChanges(_pollForTransformationIdChanges, _pollForHpChanges);
+                PollForMemoryChanges();
             }
             if (_configOpen == false)
             {
@@ -523,7 +513,7 @@ namespace Telesto
                 ImGui.Separator();
                 lock (Sends)
                 {
-                    ImGui.Text(String.Format("Sent telegrams: {0} ({1} queued, running={2}, last={3})", _sentTelegrams, Sends.Count, _sendThreadRunning, _sendLastTimestamp));
+                    ImGui.Text(String.Format("Sent: resp={0} tele={1} ({2} queued, running={3}, last={4})", _sentResponses, _sentTelegrams, Sends.Count, _sendThreadRunning, _sendLastTimestamp));
                 }
                 lock (Subscriptions)
                 {
@@ -532,7 +522,7 @@ namespace Telesto
                     string typesdesc = String.Join(", ", types);
                     ImGui.Text(String.Format("Active subs: {0} ({1})", activesubs, typesdesc));
                 }
-                ImGui.Text(String.Format("Active polls: trid={0} hp={1}", _pollForTransformationIdChanges, _pollForHpChanges));
+                ImGui.Text(String.Format("Active polls: mem={0}", _pollForMemory));
                 if (ImGui.Button("Remove all subs"))
                 {
                     lock (Subscriptions)
@@ -974,6 +964,8 @@ namespace Telesto
         {
             switch (prop.ToLower())
             {
+                case "address":
+                    return go.Address.ToString();
                 case "name":
                     return go.Name.TextValue;
                 case "job":
@@ -1028,7 +1020,7 @@ namespace Telesto
             return "";
         }
 
-        public string ExpandVariables(string expr)
+        public string ExpandVariables(Context ctx, string expr)
         {
             Match m, mx;
             string newexpr = expr;
@@ -1058,6 +1050,21 @@ namespace Telesto
                     {
                         val = ((long)(DateTime.UtcNow - new DateTime(1970, 1, 1, 0, 0, 0)).TotalMilliseconds).ToString();
                         found = true;
+                    }
+                    else if (x.IndexOf("_addr") == 0)
+                    {
+                        mx = rexlidx.Match(x);
+                        if (mx.Success == true)
+                        {
+                            string idx = mx.Groups["index"].Value;
+                            switch (idx.ToLower())
+                            {
+                                case "gameobject":
+                                    val = ctx.go != null ? ctx.go.Address.ToString() : "0";
+                                    break;
+                            }
+                            found = true;
+                        }
                     }
                     else if (x.IndexOf("_ffxiventity") == 0)
                     {
@@ -1090,9 +1097,19 @@ namespace Telesto
             return newexpr;
         }
 
-        internal double EvaluateNumericExpression(string expr)
+        internal double EvaluateNumericExpression(Doodle dee, string expr)
         {
-            string exp = ExpandVariables(expr == null ? "" : expr);
+            return EvaluateNumericExpression(new Context() { doo = dee }, expr);
+        }
+
+        internal double EvaluateNumericExpression(GameObject goo, string expr)
+        {
+            return EvaluateNumericExpression(new Context() { go = goo }, expr);
+        }
+
+        internal double EvaluateNumericExpression(Context ctx, string expr)
+        {
+            string exp = ExpandVariables(ctx, expr == null ? "" : expr);
             lock (mp)
             {
                 return mp.Parse(exp);
@@ -1172,26 +1189,48 @@ namespace Telesto
             string id = d["id"].ToString().ToLower();
             string type = d["type"].ToString().ToLower();
             string endpoint = d["endpoint"].ToString();
-            lock (Subscriptions)
+            switch (type)
             {
-                Subscription s = null;
-                if (Subscriptions.ContainsKey(id) == true)
-                {
-                    s = Subscriptions[id];
-                    if (s.type != type)
+                case "memory":
                     {
-                        TurnSubscriptionTypeOff(s.type);
+                        string start = d["start"].ToString().ToLower();
+                        string length = d["length"].ToString().ToLower();
+                        string repr = d.ContainsKey("representation") == true ? d["representation"].ToString().ToLower() : "";
+                        lock (Subscriptions)
+                        {
+                            Subscription s = null;
+                            Subscriptions.Memory sm = null;
+                            if (Subscriptions.ContainsKey(id) == true)
+                            {
+                                s = Subscriptions[id];
+                                if (s.type != type)
+                                {
+                                    TurnSubscriptionTypeOff(s.type);
+                                    s = null;
+                                }
+                            }
+                            if (s == null)
+                            {
+                                sm = new Subscriptions.Memory();
+                                Subscriptions[id] = sm;
+                                s = sm;
+                            }
+                            else
+                            {
+                                sm = (Subscriptions.Memory)s;
+                            }
+                            sm.start = start;
+                            sm.length = length;
+                            sm.endpoint = endpoint;
+                            sm.representation = repr;
+                            s.id = id;
+                            s.type = type;
+                            s.p = this;
+                            s.first = true;
+                            TurnSubscriptionTypeOn(s.type);
+                        }
                     }
-                }
-                else
-                {
-                    s = new Subscription();
-                    Subscriptions[id] = s;
-                }
-                s.id = id;
-                s.type = type;
-                s.endpoint = endpoint;
-                TurnSubscriptionTypeOn(s.type);
+                    break;
             }
             return null;
         }
@@ -1224,11 +1263,8 @@ namespace Telesto
         {
             switch (id)
             {
-                case "trid":
-                    _pollForTransformationIdChanges = true;
-                    break;
-                case "hp":
-                    _pollForHpChanges = true;
+                case "memory":
+                    _pollForMemory = true;
                     break;
             }
         }
@@ -1237,11 +1273,8 @@ namespace Telesto
         {
             switch (id)
             {
-                case "trid":
-                    _pollForTransformationIdChanges = false;
-                    break;
-                case "hp":
-                    _pollForHpChanges = false;
+                case "memory":
+                    _pollForMemory = false;
                     break;
             }
         }
@@ -1326,117 +1359,58 @@ namespace Telesto
             }
         }
 
-        private unsafe void PollForCharacterChanges(bool polltrid, bool pollhp)
+        private unsafe void PollForMemoryChanges()
         {
+            List<Subscription> firstsubs = new List<Subscription>();
+            Context ctx = new Context();
             foreach (GameObject go in _ot)
-            {                
-                if (pollhp == true && go is BattleChara)
+            {
+                ctx.go = go;
+                foreach (Subscription s in Subscriptions.Values)
                 {
-                    BattleChara c = (BattleChara)go;
-                    uint hp = c.CurrentHp;
-                    lock (HpValues)
+                    if (s.type != "memory")
                     {
-                        if (HpValues.ContainsKey(c.ObjectId) == false)
-                        {
-                            HpValues[c.ObjectId] = hp;
-                            HpChangeNotify(go, 0, hp);
-                        }
-                        else
-                        {
-                            uint oldhp = HpValues[c.ObjectId];
-                            if (oldhp != hp)
-                            {
-                                HpValues[c.ObjectId] = hp;
-                                HpChangeNotify(go, oldhp, hp);
-                            }
-                        }
+                        continue;
                     }
-                }
-                if (polltrid == true && _ot is Character)
-                {
-                    Character c = (Character)go;
-                    StructCharacter* cx = (StructCharacter*)c.Address;
-                    short trid = cx->TransformationId;
-                    lock (TransformationIds)
+                    if (s.Refresh(ctx) == false)
                     {
-                        if (TransformationIds.ContainsKey(c.ObjectId) == false)
-                        {
-                            TransformationIds[c.ObjectId] = trid;
-                            TransformationChangeNotify(go, 0, trid);
-                        }
-                        else
-                        {
-                            short oldtrid = TransformationIds[c.ObjectId];
-                            if (oldtrid != trid)
-                            {
-                                TransformationIds[c.ObjectId] = trid;
-                                TransformationChangeNotify(go, oldtrid, trid);
-                            }
-                        }
+                        continue;
                     }
+                    if (s.first == true)
+                    {
+                        if (firstsubs.Contains(s) == false)
+                        {
+                            firstsubs.Add(s);
+                        }
+                        continue;
+                    }
+                    s.GetRepresentation(ctx, out string oldrep, out string newrep);
+                    Subscriptions.Memory sm = (Subscriptions.Memory)s;
+                    //_cg.Print(String.Format("{0} {1}: old {2} new {3}", go.Address, go.Name.TextValue, oldrep, newrep));
+                    QueueSendTelegram(
+                        s.endpoint,
+                        JsonSerializer.Serialize<Notification>(
+                            new Notification()
+                            {
+                                id = 1,
+                                version = 1,
+                                notificationid = s.id,
+                                notificationtype = "memory",
+                                payload = new PropertyChangeNotification()
+                                {
+                                    objectid = go.ObjectId.ToString("X8"),
+                                    name = go.Name.TextValue,
+                                    oldvalue = oldrep,
+                                    newvalue = newrep
+                                }
+                            }
+                        )
+                    );
                 }
             }
-        }
-
-        private void TransformationChangeNotify(GameObject go, short oldtrid, short newtrid)
-        {
-            List<Tuple<string, string>> notifs;
-            lock (Subscriptions)
-            {                
-                notifs = (from ix in Subscriptions.Values where ix.type == "trid" select new Tuple<string, string>(ix.id, ix.endpoint)).Distinct().ToList();
-            }
-            foreach (var notif in notifs)
+            foreach (Subscription s in firstsubs)
             {
-                QueueSendTelegram(
-                    notif.Item2,
-                    JsonSerializer.Serialize<Notification>(
-                        new Notification()
-                        {
-                            id = 1,
-                            version = 1,
-                            notificationid = notif.Item1,
-                            notificationtype = "trid",
-                            payload = new PropertyChangeNotification()
-                            {
-                                objectid = go.ObjectId.ToString("X8"),
-                                name = go.Name.TextValue,
-                                oldvalue = oldtrid.ToString(),
-                                newvalue = newtrid.ToString()
-                            }
-                        }
-                    )
-                );
-            }
-        }
-
-        private void HpChangeNotify(GameObject go, uint oldhp, uint newhp)
-        {
-            List<Tuple<string, string>> notifs;
-            lock (Subscriptions)
-            {
-                notifs = (from ix in Subscriptions.Values where ix.type == "hp" select new Tuple<string, string>(ix.id, ix.endpoint)).Distinct().ToList();
-            }
-            foreach (var notif in notifs)
-            {
-                QueueSendTelegram(
-                    notif.Item2,
-                    JsonSerializer.Serialize<Notification>(
-                        new Notification()
-                        {
-                            id = 1,
-                            version = 1,
-                            notificationid = notif.Item1,
-                            notificationtype = "hp",
-                            payload = new PropertyChangeNotification()
-                            {
-                                objectid = go.ObjectId.ToString("X8"),
-                                name = go.Name.TextValue,
-                                oldvalue = oldhp.ToString(),
-                                newvalue = newhp.ToString()
-                            }
-                        }
-                    )
-                );
+                s.first = false;
             }
         }
 
