@@ -79,8 +79,8 @@ namespace Telesto.Doodles
             }
             else
             {
-                Vector3 tf = from.UnadjustedPosition(p);
-                Vector3 tt = to.UnadjustedPosition(p);
+                Vector3 tf = from.UntranslatedPosition(p);
+                Vector3 tt = to.UntranslatedPosition(p);
                 float distance = Vector3.Distance(tf, tt);
                 double anglexz = Math.Atan2(tf.Z - tt.Z, tf.X - tt.X);
                 float head = distance * 0.7f;

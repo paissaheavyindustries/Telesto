@@ -87,8 +87,8 @@ namespace Telesto.Doodles
             }
             else
             {
-                Vector3 tf = from.UnadjustedPosition(p);
-                Vector3 tt = at.UnadjustedPosition(p);
+                Vector3 tf = from.UntranslatedPosition(p);
+                Vector3 tt = at.UntranslatedPosition(p);
                 float distance = Vector3.Distance(tf, tt);
                 float length;
                 length = lengthchonk < 0.0 ? distance : lengthchonk;

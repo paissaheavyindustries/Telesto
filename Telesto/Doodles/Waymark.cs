@@ -49,7 +49,7 @@ namespace Telesto.Doodles
 
         internal override void Draw()
         {
-            Vector3 temp = position.UnadjustedPosition(p);
+            Vector3 temp = position.UntranslatedPosition(p);
             Vector3 me = p.GetLocalPosition();
             float distance = Vector3.Distance(temp, me);
             float alpha = col.W / 4.0f;

@@ -37,6 +37,8 @@ using System.IO;
 using System.Net;
 using static System.Net.WebRequestMethods;
 using System.Threading.Tasks;
+using Dalamud.Data;
+using FFXIVClientStructs.FFXIV.Client.Game.Fate;
 
 namespace Telesto
 {
@@ -226,6 +228,7 @@ namespace Telesto
         private ClientState _cs { get; init; }
         private ObjectTable _ot { get; init; }
         private PartyList _pl { get; init; }
+        private DataManager _dm { get; init; }
         private Dictionary<string, Subscription> Subscriptions = new Dictionary<string, Subscription>();
         private ManualResetEvent SendPendingEvent = new ManualResetEvent(false);
         private ManualResetEvent StopEvent = new ManualResetEvent(false);
@@ -276,7 +279,8 @@ namespace Telesto
             [RequiredVersion("1.0")] ObjectTable objectTable,
             [RequiredVersion("1.0")] GameGui gameGui,
             [RequiredVersion("1.0")] ChatGui chatGui,
-            [RequiredVersion("1.0")] PartyList partylist
+            [RequiredVersion("1.0")] PartyList partylist,
+            [RequiredVersion("1.0")] DataManager dataManager
         )
         {
             _pi = pluginInterface;
@@ -286,6 +290,7 @@ namespace Telesto
             _gg = gameGui;
             _cg = chatGui;
             _pl = partylist;
+            _dm = dataManager;
             _cfg = _pi.GetPluginConfig() as Config ?? new Config();
             _pi.UiBuilder.Draw += DrawUI;
             _pi.UiBuilder.OpenConfigUi += OpenConfigUI;
@@ -338,6 +343,11 @@ namespace Telesto
             {
                 _waymarksObjFound = (_waymarksObj != IntPtr.Zero);
             }
+        }
+
+        internal ImGuiScene.TextureWrap? GetTexture(uint id)
+        {
+            return _dm.GetImGuiTextureIcon(id);
         }
 
         private IntPtr SearchForSig(string sig)
@@ -401,6 +411,16 @@ namespace Telesto
             }
             catch (Exception)
             {
+            }
+            foreach (KeyValuePair<string, Doodle> kp in Doodles)
+            {
+                try
+                {
+                    kp.Value.Dispose();
+                }
+                catch (Exception)
+                {
+                }
             }
             _cm.RemoveHandler("/telesto");
             _cs.Logout -= _cs_Logout;
@@ -1066,6 +1086,42 @@ namespace Telesto
                             found = true;
                         }
                     }
+                    else if (x.IndexOf("_sin") == 0)
+                    {
+                        mx = rexlidx.Match(x);
+                        if (mx.Success == true)
+                        {
+                            string freqs = mx.Groups["index"].Value.Replace(",", ".");
+                            if (double.TryParse(freqs, CultureInfo.InvariantCulture, out double freq) == true)
+                            {
+                                long ms = ((long)(DateTime.UtcNow - new DateTime(2023, 1, 1, 0, 0, 0)).TotalMilliseconds);
+                                val = ((float)Math.Round(Math.Sin(ms / 1000.0 * freq * 2.0 * Math.PI), 3)).ToString(CultureInfo.InvariantCulture);
+                            }
+                            else
+                            {
+                                val = "0";
+                            }
+                            found = true;
+                        }
+                    }
+                    else if (x.IndexOf("_cos") == 0)
+                    {
+                        mx = rexlidx.Match(x);
+                        if (mx.Success == true)
+                        {
+                            string freqs = mx.Groups["index"].Value.Replace(",", ".");
+                            if (double.TryParse(freqs, CultureInfo.InvariantCulture, out double freq) == true)
+                            {
+                                long ms = ((long)(DateTime.UtcNow - new DateTime(2023, 1, 1, 0, 0, 0)).TotalMilliseconds);
+                                val = ((float)Math.Round(Math.Cos(ms / 1000.0 * freq * 2.0 * Math.PI), 3)).ToString(CultureInfo.InvariantCulture);
+                            }
+                            else
+                            {
+                                val = "0";
+                            }
+                            found = true;
+                        }
+                    }
                     else if (x.IndexOf("_ffxiventity") == 0)
                     {
                         mx = rexnump.Match(x);
@@ -1155,7 +1211,9 @@ namespace Telesto
             {
                 if (Doodles.ContainsKey(id) == true)
                 {
+                    Doodle dee = Doodles[id];
                     Doodles.Remove(id);
+                    dee.Dispose();
                 }
             }
             return null;
@@ -1177,7 +1235,9 @@ namespace Telesto
                 }
                 foreach (string key in toRem)
                 {
+                    Doodle dee = Doodles[key];
                     Doodles.Remove(key);
+                    dee.Dispose();
                 }
             }
             return null;
@@ -1341,6 +1401,7 @@ namespace Telesto
                         {
                             Doodles.Remove(d.Name);
                         }
+                        d.Dispose();
                     }
                 }
             }

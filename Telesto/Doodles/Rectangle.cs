@@ -103,8 +103,8 @@ namespace Telesto.Doodles
             }
             else
             {
-                Vector3 t1 = pos1.UnadjustedPosition(p);
-                Vector3 t3 = pos2.UnadjustedPosition(p);
+                Vector3 t1 = pos1.UntranslatedPosition(p);
+                Vector3 t3 = pos2.UntranslatedPosition(p);
                 Vector3 t2 = new Vector3(t3.X, (t1.Y +  t3.Y) / 2.0f, t1.Z);
                 Vector3 t4 = new Vector3(t1.X, (t1.Y + t3.Y) / 2.0f, t3.Z);
                 Vector3 v1 = p.TranslateToScreen(t1.X, t1.Y, t1.Z);

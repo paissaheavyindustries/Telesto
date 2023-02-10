@@ -16,7 +16,7 @@ using Vector4 = System.Numerics.Vector4;
 namespace Telesto
 {
 
-    internal abstract class Doodle
+    internal abstract class Doodle : IDisposable
     {
 
         internal class Coordinate
@@ -34,6 +34,11 @@ namespace Telesto
             internal Doodle doo { get; set; }
             internal CoordinateTypeEnum ct { get; set; }
             internal Vector3 cp { get; set; }
+            float ofsx, ofsy, ofsz;
+
+            internal string OffsetX { get; set; }
+            internal string OffsetY { get; set; }
+            internal string OffsetZ { get; set; }
 
             internal string X { get; set; }
             internal string Y { get; set; }
@@ -41,23 +46,36 @@ namespace Telesto
             internal ulong id { get; set; }
             internal string name { get; set; }
 
-            internal Vector3 UnadjustedPosition(Plugin p)
+            internal Vector3 UntranslatedPosition(Plugin p)
             {
+                ofsx = ofsy = ofsz = 0.0f;
+                if (OffsetX != "")
+                {
+                    ofsx = (float)p.EvaluateNumericExpression(doo, OffsetX);
+                }
+                if (OffsetY != "")
+                {
+                    ofsy = (float)p.EvaluateNumericExpression(doo, OffsetY);
+                }
+                if (OffsetZ != "")
+                {
+                    ofsz = (float)p.EvaluateNumericExpression(doo, OffsetZ);
+                }
                 switch (ct)
                 {
                     default:
                     case CoordinateTypeEnum.Screen:
                         return new Vector3(
-                            (float)p.EvaluateNumericExpression(doo, X),
-                            (float)p.EvaluateNumericExpression(doo, Y),
-                            (float)p.EvaluateNumericExpression(doo, Z)
+                            ofsx + (float)p.EvaluateNumericExpression(doo, X),
+                            ofsy + (float)p.EvaluateNumericExpression(doo, Y),
+                            ofsz + (float)p.EvaluateNumericExpression(doo, Z)
                         );
                         break;
                     case CoordinateTypeEnum.World:
                         return new Vector3(
-                            (float)p.EvaluateNumericExpression(doo, X),
-                            (float)p.EvaluateNumericExpression(doo, Y),
-                            (float)p.EvaluateNumericExpression(doo, Z)
+                            ofsx + (float)p.EvaluateNumericExpression(doo, X),
+                            ofsy + (float)p.EvaluateNumericExpression(doo, Y),
+                            ofsz + (float)p.EvaluateNumericExpression(doo, Z)
                         );
                         break;
                     case CoordinateTypeEnum.Entity:
@@ -73,17 +91,17 @@ namespace Telesto
                         if (go != null)
                         {
                             return new Vector3(
-                                go.Position.X,
-                                go.Position.Y,
-                                go.Position.Z
+                                ofsx + go.Position.X,
+                                ofsy + go.Position.Y,
+                                ofsz + go.Position.Z
                             );
                         }
                         else
                         {
                             return new Vector3(
-                                (float)p.EvaluateNumericExpression(doo, X),
-                                (float)p.EvaluateNumericExpression(doo, Y),
-                                (float)p.EvaluateNumericExpression(doo, Z)
+                                ofsx + (float)p.EvaluateNumericExpression(doo, X),
+                                ofsy + (float)p.EvaluateNumericExpression(doo, Y),
+                                ofsz + (float)p.EvaluateNumericExpression(doo, Z)
                             );
                         }
                         break;
@@ -95,7 +113,7 @@ namespace Telesto
                             Coordinate c = d.GetCoordinateByName(spl.Length > 1 ? spl[1] : "");
                             if (c != null)
                             {
-                                return c.UnadjustedPosition(p);
+                                return c.UntranslatedPosition(p);
                             }
                         }
                         return new Vector3();
@@ -104,9 +122,9 @@ namespace Telesto
                         if (wm != null && wm.Active == true)
                         {
                             return new Vector3(
-                                wm.X_Float,
-                                wm.Y_Float,
-                                wm.Z_Float
+                                ofsx + wm.X_Float,
+                                ofsy + wm.Y_Float,
+                                ofsz + wm.Z_Float
                             );
                         }
                         return new Vector3();
@@ -115,20 +133,33 @@ namespace Telesto
 
             internal void RefreshVector(Plugin p)
             {
+                ofsx = ofsy = ofsz = 0.0f;
+                if (OffsetX != "")
+                {
+                    ofsx = (float)p.EvaluateNumericExpression(doo, OffsetX);
+                }
+                if (OffsetY != "")
+                {
+                    ofsy = (float)p.EvaluateNumericExpression(doo, OffsetY);
+                }
+                if (OffsetZ != "")
+                {
+                    ofsz = (float)p.EvaluateNumericExpression(doo, OffsetZ);
+                }                
                 switch (ct)
                 {
                     case CoordinateTypeEnum.Screen:
                         cp = new Vector3(
-                            (float)p.EvaluateNumericExpression(doo, X),
-                            (float)p.EvaluateNumericExpression(doo, Y),
-                            (float)p.EvaluateNumericExpression(doo, Z)
+                            ofsx + (float)p.EvaluateNumericExpression(doo, X),
+                            ofsy + (float)p.EvaluateNumericExpression(doo, Y),
+                            ofsz + (float)p.EvaluateNumericExpression(doo, Z)
                         );
                         break;
                     case CoordinateTypeEnum.World:
                         cp = p.TranslateToScreen(
-                            p.EvaluateNumericExpression(doo, X),
-                            p.EvaluateNumericExpression(doo, Y),
-                            p.EvaluateNumericExpression(doo, Z)
+                            ofsx + p.EvaluateNumericExpression(doo, X),
+                            ofsy + p.EvaluateNumericExpression(doo, Y),
+                            ofsz + p.EvaluateNumericExpression(doo, Z)
                         );
                         break;
                     case CoordinateTypeEnum.Entity:
@@ -144,17 +175,17 @@ namespace Telesto
                         if (go != null)
                         {
                             cp = p.TranslateToScreen(
-                                go.Position.X,
-                                go.Position.Y,
-                                go.Position.Z
+                                ofsx + go.Position.X,
+                                ofsy + go.Position.Y,
+                                ofsz + go.Position.Z
                             );
                         }
                         else
                         {
                             cp = p.TranslateToScreen(
-                                p.EvaluateNumericExpression(doo, X),
-                                p.EvaluateNumericExpression(doo, Y),
-                                p.EvaluateNumericExpression(doo, Z)
+                                ofsx + p.EvaluateNumericExpression(doo, X),
+                                ofsy + p.EvaluateNumericExpression(doo, Y),
+                                ofsz + p.EvaluateNumericExpression(doo, Z)
                             );
                         }
                         break;
@@ -166,11 +197,11 @@ namespace Telesto
                             Coordinate c = d.GetCoordinateByName(spl.Length > 1 ? spl[1] : "");
                             if (c != null)
                             {
-                                Vector3 uap = c.UnadjustedPosition(p);
+                                Vector3 uap = c.UntranslatedPosition(p);
                                 cp = p.TranslateToScreen(
-                                    uap.X,
-                                    uap.Y,
-                                    uap.Z
+                                    ofsx + uap.X,
+                                    ofsy + uap.Y,
+                                    ofsz + uap.Z
                                 );
                             }
                             else
@@ -188,9 +219,9 @@ namespace Telesto
                         if (wm != null && wm.Active == true)
                         {
                             cp = p.TranslateToScreen(
-                                wm.X_Float,
-                                wm.Y_Float,
-                                wm.Z_Float
+                                ofsx + wm.X_Float,
+                                ofsy + wm.Y_Float,
+                                ofsz + wm.Z_Float
                             );
                         }
                         else
@@ -225,6 +256,9 @@ namespace Telesto
                 X = (d.ContainsKey("x") == true) ? d["x"].ToString() : "0";
                 Y = (d.ContainsKey("y") == true) ? d["y"].ToString() : "0";
                 Z = (d.ContainsKey("z") == true) ? d["z"].ToString() : "0";
+                OffsetX = (d.ContainsKey("offsetx") == true) ? d["offsetx"].ToString() : "";
+                OffsetY = (d.ContainsKey("offsety") == true) ? d["offsety"].ToString() : "";
+                OffsetZ = (d.ContainsKey("offsetz") == true) ? d["offsetz"].ToString() : "";
                 id = 0;
                 if (d.ContainsKey("id") == true)
                 {
@@ -264,15 +298,24 @@ namespace Telesto
         internal string B { get; set; }
         internal string A { get; set; }
 
-        abstract internal Coordinate GetCoordinateByName(string id);
+        internal virtual string DefaultR { get; } = "0";
+        internal virtual string DefaultG { get; } = "0";
+        internal virtual string DefaultB { get; } = "0";
+        internal virtual string DefaultA { get; } = "1";
+
+        abstract internal Coordinate GetCoordinateByName(string id);        
+
+        public virtual void Dispose()
+        {
+        }
 
         internal virtual void Initialize(Dictionary<string, object> d)
         {
             Name = d["name"].ToString();
-            R = (d.ContainsKey("r") == true) ? d["r"].ToString() : "0";
-            G = (d.ContainsKey("g") == true) ? d["g"].ToString() : "0";
-            B = (d.ContainsKey("b") == true) ? d["b"].ToString() : "0";
-            A = (d.ContainsKey("a") == true) ? d["a"].ToString() : "1";
+            R = (d.ContainsKey("r") == true) ? d["r"].ToString() : DefaultR;
+            G = (d.ContainsKey("g") == true) ? d["g"].ToString() : DefaultG;
+            B = (d.ContainsKey("b") == true) ? d["b"].ToString() : DefaultB;
+            A = (d.ContainsKey("a") == true) ? d["a"].ToString() : DefaultA;
             if (d.ContainsKey("expireson") == true)
             {
                 ExpiryTypeEnum nt = 0;
@@ -324,6 +367,9 @@ namespace Telesto
                     break;
                 case "beam":
                     doo = new Doodles.Beam();
+                    break;
+                case "image":
+                    doo = new Doodles.Image();
                     break;
             }
             if (doo != null)

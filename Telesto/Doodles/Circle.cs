@@ -97,7 +97,7 @@ namespace Telesto.Doodles
             }
             else
             {
-                Vector3 temp = position.UnadjustedPosition(p);
+                Vector3 temp = position.UntranslatedPosition(p);
                 for (int i = 0; i <= 48; i++)
                 {
                     Vector3 mauw = p.TranslateToScreen(
