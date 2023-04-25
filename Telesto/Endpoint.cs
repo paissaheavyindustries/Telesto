@@ -56,6 +56,10 @@ namespace Telesto
         {
             try
             {
+                if (Status != StatusEnum.Stopped)
+                {
+                    return;
+                }
                 SetStatus(StatusEnum.Starting, null);                
                 HttpListener http = new HttpListener();
                 http.Prefixes.Clear();
@@ -84,6 +88,10 @@ namespace Telesto
 
         public void Stop()
         {
+            if (Status != StatusEnum.Started)
+            {
+                return;
+            }
             SetStatus(StatusEnum.Stopping, null);
             lock (this)
             {

@@ -371,6 +371,14 @@ namespace Telesto
                 case "image":
                     doo = new Doodles.Image();
                     break;
+                case "cone":
+                    doo = new Doodles.Cone();
+                    break;
+                case "donut":
+                    doo = new Doodles.Donut();
+                    break;
+                default:
+                    throw new ArgumentException(String.Format("Unsupported doodle type '{0}'", type));
             }
             if (doo != null)
             {

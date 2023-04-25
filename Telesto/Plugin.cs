@@ -39,6 +39,10 @@ using static System.Net.WebRequestMethods;
 using System.Threading.Tasks;
 using Dalamud.Data;
 using FFXIVClientStructs.FFXIV.Client.Game.Fate;
+using System.Diagnostics;
+using FFXIVClientStructs.FFXIV.Client.Game.UI;
+using ImGuiScene;
+using static System.Reflection.Metadata.BlobBuilder;
 
 namespace Telesto
 {
@@ -86,6 +90,9 @@ namespace Telesto
             public uint jobid { get; set; }
             public byte level { get; set; }
             public string actor { get; set; }
+            public float x { get; set; }
+            public float y { get; set; }
+            public float z { get; set; }
 
             public string job
             {
@@ -236,18 +243,16 @@ namespace Telesto
         private bool _pollForMemory = false;
         private bool _sendThreadRunning = false;
         private DateTime _sendLastTimestamp = DateTime.Now;
+        private float _adjusterX = 0.0f;
 
-        private string _debugTeleTest = "";
-        private bool _configOpen = false;
+        private string _debugTeleTest = "";        
         private bool _loggedIn = false;
         private bool _funcPtrChatboxFound = false;
         private bool _waymarksObjFound = false;
         private bool _destroyDoodles = false;
         private Waymarks _waymarks = new Waymarks();
 
-        private bool _cfgAutostartEndpoint;
         private bool _territoryChanged = true;
-        private string _cfgHttpEndpoint = "";
 
         private int _reqServed = 0;
         internal int _sentResponses = 0;
@@ -268,6 +273,7 @@ namespace Telesto
         private Dictionary<string, Doodle> Doodles = new Dictionary<string, Doodle>();
         private Queue<PendingRequest> Requests = new Queue<PendingRequest>();
         private Queue<Tuple<string, string>> Sends = new Queue<Tuple<string, string>>();
+        private Dictionary<int, TextureWrap> _textures = new Dictionary<int, TextureWrap>();
 
         [PluginService]
         public static SigScanner TargetModuleScanner { get; private set; }
@@ -301,16 +307,12 @@ namespace Telesto
             _cs.Login += _cs_Login;
             _cs.Logout += _cs_Logout;
             _cs.TerritoryChanged += _cs_TerritoryChanged;
-            if (_cs.IsLoggedIn == true)
-            {
-                _loggedIn = true;
-                FindSigs();
-            }
             _pr = new Parser();
             _ep = new Endpoint() { plug = this };
-            if (_cfg.AutostartEndpoint == true)
+            LoadTextures();
+            if (_cs.IsLoggedIn == true)
             {
-                _ep.Start();
+                _cs_Login(null, null);
             }
             SendThread = new Thread(new ParameterizedThreadStart(SendThreadProc));
             SendThread.Name = "Telesto send thread";
@@ -320,6 +322,23 @@ namespace Telesto
         private void _cs_TerritoryChanged(object sender, ushort e)
         {
             _territoryChanged = true;
+        }
+
+        private void LoadTextures()
+        {
+            _textures[1] = GetTexture(5);
+        }
+
+        private void UnloadTextures()
+        {
+            foreach (KeyValuePair<int, TextureWrap> kp in _textures)
+            {
+                if (kp.Value != null)
+                {
+                    kp.Value.Dispose();
+                }
+            }
+            _textures.Clear();
         }
 
         private void ResetSigs()
@@ -345,7 +364,7 @@ namespace Telesto
             }
         }
 
-        internal ImGuiScene.TextureWrap? GetTexture(uint id)
+        internal TextureWrap? GetTexture(uint id)
         {
             return _dm.GetImGuiTextureIcon(id);
         }
@@ -364,6 +383,16 @@ namespace Telesto
         {
             _loggedIn = false;
             ResetSigs();
+            try
+            {
+                if (_ep != null)
+                {
+                    _ep.Stop();
+                }
+            }
+            catch (Exception)
+            {
+            }
         }
 
         private void _cs_Login(object sender, EventArgs e)
@@ -371,6 +400,10 @@ namespace Telesto
             _loggedIn = true;
             ResetSigs();
             FindSigs();
+            if (_cfg.AutostartEndpoint == true)
+            {
+                _ep.Start();
+            }
         }
 
         internal string QueueTelegram(string tele)
@@ -427,6 +460,8 @@ namespace Telesto
             _cs.Login -= _cs_Login;
             _pi.UiBuilder.Draw -= DrawUI;
             _pi.UiBuilder.OpenConfigUi -= OpenConfigUI;
+            UnloadTextures();
+            SaveConfig();
             try
             {
                 if (StopEvent != null)
@@ -485,46 +520,154 @@ namespace Telesto
             {
                 PollForMemoryChanges();
             }
-            if (_configOpen == false)
+            if (_cfg.Opened == false)
             {
                 DrawDoodles();
                 return;
             }
+            ImGui.PushStyleColor(ImGuiCol.TitleBgActive, new Vector4(0.496f, 0.058f, 0.323f, 1.0f));
+            ImGui.PushStyleColor(ImGuiCol.TabActive, new Vector4(0.496f, 0.058f, 0.323f, 1.0f));
+            ImGui.PushStyleColor(ImGuiCol.TabHovered, new Vector4(0.4f, 0.4f, 0.4f, 1.0f));
             ImGui.SetNextWindowSize(new Vector2(300, 500), ImGuiCond.FirstUseEver);
-            ImGui.Begin("Telesto", ref _configOpen);
-            ImGui.Separator();
+            bool open = true;
+            if (ImGui.Begin(Name, ref open, ImGuiWindowFlags.NoCollapse) == false)
+            {
+                ImGui.End();
+                ImGui.PopStyleColor(3);
+                return;
+            }
+            if (open == false)
+            {
+                _cfg.Opened = false;
+                ImGui.End();
+                ImGui.PopStyleColor(3);
+                return;
+            }
+            ImGuiStylePtr style = ImGui.GetStyle();
+            Vector2 fsz = ImGui.GetContentRegionAvail();
+            fsz.Y -= ImGui.GetTextLineHeight() + (style.ItemSpacing.Y * 2) + style.WindowPadding.Y;
+            ImGui.BeginChild("TellyFrame", fsz);
             ImGui.BeginTabBar("Telesto_Main", ImGuiTabBarFlags.None);
             if (ImGui.BeginTabItem("Endpoint"))
             {
-                ImGui.Checkbox("Start endpoint on launch", ref _cfgAutostartEndpoint);
-                ImGui.InputText("HTTP POST endpoint", ref _cfgHttpEndpoint, 2048);
+                ImGui.BeginChild("EndpointChild");
+                if (_cfg.DismissUpgrade == false)
+                {
+                    Vector2 cps = ImGui.GetCursorPos();
+                    ImGui.Image(_textures[1].ImGuiHandle, new Vector2(_textures[1].Width, _textures[1].Height));
+                    ImGui.SetCursorPos(new Vector2(cps.X + _textures[1].Width + 10, cps.Y));
+                    ImGui.TextWrapped("There is now a new, much easier and reliable way to get automarkers! No configuration needed, you don't even need ACT or Telesto; Lemegeton is everything you need in one easy to use Dalamud plugin!" + Environment.NewLine + Environment.NewLine + "You can find it in the same Dalamud repository you added to get this plugin (Telesto), so you're just a couple of clicks away from the next generation of automarkers - just head back to the plugin installer, find Lemegeton from the list, and enjoy!" + Environment.NewLine + Environment.NewLine);
+                    Vector2 cps2 = ImGui.GetCursorPos();
+                    ImGui.SetCursorPos(new Vector2(cps.X + _textures[1].Width + 10, cps2.Y));
+                    if (ImGui.Button("Open plugin installer") == true)
+                    {
+                        SubmitCommand("/xlplugins");
+                    }
+                    ImGui.SameLine();
+                    if (ImGui.Button("Lemegeton homepage") == true)
+                    {
+                        Task tx = new Task(() =>
+                        {
+                            Process p = new Process();
+                            p.StartInfo.UseShellExecute = true;
+                            p.StartInfo.FileName = @"https://github.com/paissaheavyindustries/Lemegeton";
+                            p.Start();
+                        });
+                        tx.Start();
+                    }
+                    ImGui.SameLine();
+                    if (ImGui.Button("Dismiss") == true)
+                    {
+                        _cfg.DismissUpgrade = true;
+                    }
+                    ImGui.Separator();
+                }
+                bool autoStart = _cfg.AutostartEndpoint;
+                if (ImGui.Checkbox("Start endpoint automatically on login", ref autoStart) == true)
+                {
+                    _cfg.AutostartEndpoint = autoStart;
+                }
+                bool logged = _loggedIn;
+                bool canstart = false;
+                bool canstop = false;
+                if (logged == true)
+                {
+                    switch (_ep.Status)
+                    {
+                        case StatusEnum.Started:
+                            canstop = true;
+                            break;
+                        case StatusEnum.Stopped:
+                            canstart = true;
+                            break;
+                    }
+                }
+                if (canstart == false)
+                {
+                    ImGui.BeginDisabled();
+                }
+                string endpoint = _cfg.HttpEndpoint;
+                if (ImGui.InputText("HTTP POST endpoint", ref endpoint, 2048) == true)
+                {
+                    _cfg.HttpEndpoint = endpoint;
+                }
+                if (canstart == false)
+                {
+                    ImGui.EndDisabled();
+                }
                 ImGui.Separator();
-                ImGui.Text(String.Format("Endpoint status: {0}", _ep.Status));
-                ImGui.Text(String.Format("Status description: {0}", _ep.StatusDescription));
-                ImGui.Separator();
-                if (ImGui.Button("Save and start endpoint"))
+                if (logged == false)
+                {
+                    ImGui.BeginDisabled();
+                }
+                if (logged == true && canstart == false)
+                {
+                    ImGui.BeginDisabled();
+                }
+                if (ImGui.Button("Start endpoint"))
                 {
                     SaveConfig();
                     _ep.Start();
+                }
+                if (logged == true && canstart == false)
+                {
+                    ImGui.EndDisabled();
+                }
+                ImGui.SameLine();
+                if (logged == true && canstop == false)
+                {
+                    ImGui.BeginDisabled();
                 }
                 if (ImGui.Button("Stop endpoint"))
                 {
                     _ep.Stop();
                 }
+                if (logged == true && canstop == false)
+                {
+                    ImGui.EndDisabled();
+                }
+                if (logged == false)
+                {
+                    ImGui.EndDisabled();
+                }
                 ImGui.Separator();
-                if (ImGui.Button("Revert changes"))
+                if (_loggedIn == false && _cfg.AutostartEndpoint == true)
                 {
-                    RevertConfig(_cfg);
+                    ImGui.Text(String.Format("Endpoint status: {0} (waiting for login)", _ep.Status));
                 }
-                if (ImGui.Button("Restore defaults"))
+                else
                 {
-                    RestoreConfig();
+                    ImGui.Text(String.Format("Endpoint status: {0}", _ep.Status));
                 }
+                ImGui.BeginChildFrame(1, ImGui.GetContentRegionAvail());
+                ImGui.TextWrapped(_ep.StatusDescription);
+                ImGui.EndChildFrame();
+                ImGui.EndChild();
                 ImGui.EndTabItem();
             }
-
             if (ImGui.BeginTabItem("Debug"))
             {
+                ImGui.BeginChild("DebugChild");
                 ImGui.Text(String.Format("Logged in: {0}", _loggedIn));
                 ImGui.Text(String.Format("Pointers found: cmd={0} wmo={1}", _funcPtrChatboxFound, _waymarksObjFound));
                 ImGui.Text(String.Format("Pointer: cmd={0:X} wmo={1:x}", _chatBoxModPtr, _waymarksObj));
@@ -574,42 +717,56 @@ namespace Telesto
                         _cg.PrintError(String.Format("Exception in telegram test: {0}", ex.Message));
                     }
                 }
+                ImGui.EndChild();
                 ImGui.EndTabItem();
             }
-
             ImGui.EndTabBar();
+            ImGui.EndChild();
             ImGui.Separator();
-            if (ImGui.Button("Close"))
+            Vector2 fp = ImGui.GetCursorPos();
+            ImGui.SetCursorPos(new Vector2(_adjusterX, fp.Y));
+            ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.496f, 0.058f, 0.323f, 1.0f));
+            ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(0.496f, 0.058f, 0.323f, 1.0f));
+            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.4f, 0.4f, 0.4f, 1.0f));
+            if (ImGui.Button("Discord") == true)
             {
-                _configOpen = false;
+                Task tx = new Task(() =>
+                {
+                    Process p = new Process();
+                    p.StartInfo.UseShellExecute = true;
+                    p.StartInfo.FileName = @"https://discord.gg/6f9MY55";
+                    p.Start();
+                });
+                tx.Start();
             }
+            ImGui.SameLine();
+            if (ImGui.Button("GitHub") == true)
+            {
+                Task tx = new Task(() =>
+                {
+                    Process p = new Process();
+                    p.StartInfo.UseShellExecute = true;
+                    p.StartInfo.FileName = @"https://github.com/paissaheavyindustries/Telesto";
+                    p.Start();
+                });
+                tx.Start();
+            }
+            ImGui.SameLine();
+            _adjusterX += ImGui.GetContentRegionAvail().X;
+            ImGui.PopStyleColor(3);
             ImGui.End();
+            ImGui.PopStyleColor(3);
             DrawDoodles();
         }
 
         private void OpenConfigUI()
         {
-            _cfgAutostartEndpoint = _cfg.AutostartEndpoint;
-            _cfgHttpEndpoint = _cfg.HttpEndpoint;
-            _configOpen = true;
+            _cfg.Opened = true;
         }
 
         private void SaveConfig()
         {
-            _cfg.AutostartEndpoint = _cfgAutostartEndpoint;
-            _cfg.HttpEndpoint = _cfgHttpEndpoint;
             _pi.SavePluginConfig(_cfg);
-        }
-
-        private void RevertConfig(Config cfg)
-        {
-            _cfgAutostartEndpoint = _cfg.AutostartEndpoint;
-            _cfgHttpEndpoint = _cfg.HttpEndpoint;
-        }
-
-        private void RestoreConfig()
-        {
-            RevertConfig(new Config());
         }
 
         public unsafe void SubmitCommand(string cmd)
@@ -799,20 +956,23 @@ namespace Telesto
                 uint jobid = 0;
                 byte level = 0;
                 string actor = "";
+                Vector3 pos = new Vector3(0.0f, 0.0f, 0.0f);
                 if (pls.ContainsKey(fullname) == true)
                 {
                     PartyMember pm = pls[fullname];
                     jobid = pm.ClassJob.Id;
                     level = pm.Level;
                     actor = String.Format("{0:x8}", (pm.GameObject != null ? pm.GameObject.ObjectId : pm.ObjectId));
+                    pos = pm.Position;
                 }
                 else if (_cs.LocalPlayer != null && fullname == _cs.LocalPlayer.Name.TextValue)
                 {
                     jobid = _cs.LocalPlayer.ClassJob.Id;
                     level = _cs.LocalPlayer.Level;
                     actor = String.Format("{0:x8}", _cs.LocalPlayer.ObjectId);
+                    pos = _cs.LocalPlayer.Position;
                 }
-                cbs.Add(new Combatant() { displayname = dispname, fullname = fullname, order = i + 1, jobid = jobid, level = level, actor = actor });
+                cbs.Add(new Combatant() { displayname = dispname, fullname = fullname, order = i + 1, jobid = jobid, level = level, actor = actor, x = pos.X, y = pos.Y, z = pos.Z });
             }
             return cbs;
         }
@@ -1011,15 +1171,15 @@ namespace Telesto
                 case "level":
                     return go is BattleChara ? ((BattleChara)go).Level.ToString() : "0";
                 case "x":
-                    return go.Position.X.ToString();
+                    return go.Position.X.ToString(CultureInfo.InvariantCulture);
                 case "y":
-                    return go.Position.Y.ToString();
+                    return go.Position.Y.ToString(CultureInfo.InvariantCulture);
                 case "z":
-                    return go.Position.Z.ToString();
+                    return go.Position.Z.ToString(CultureInfo.InvariantCulture);
                 case "id":
                     return go.ObjectId.ToString("X8");
                 case "heading":
-                    return go.Rotation.ToString();
+                    return go.Rotation.ToString(CultureInfo.InvariantCulture);
                 case "targetid":
                     return go.TargetObjectId.ToString("X8");
                 case "casttargetid":
@@ -1030,7 +1190,7 @@ namespace Telesto
                         {
                             float xdev = _cs.LocalPlayer.Position.X - go.Position.X;
                             float zdev = _cs.LocalPlayer.Position.Z - go.Position.Z;
-                            return Math.Sqrt((xdev * xdev) + (zdev * zdev)).ToString();
+                            return Math.Sqrt((xdev * xdev) + (zdev * zdev)).ToString(CultureInfo.InvariantCulture);
                         }
                     }
                     break;
@@ -1141,7 +1301,7 @@ namespace Telesto
                             }
                             if (go != null)
                             {
-                                val = GetEntityProperty(go, gprop).ToString();
+                                val = GetEntityProperty(go, gprop);
                             }
                         }
                         found = true;
