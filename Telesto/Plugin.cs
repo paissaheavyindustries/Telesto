@@ -43,6 +43,9 @@ using System.Diagnostics;
 using FFXIVClientStructs.FFXIV.Client.Game.UI;
 using ImGuiScene;
 using static System.Reflection.Metadata.BlobBuilder;
+using Dalamud.Plugin.Services;
+using Dalamud.Interface.Utility;
+using Dalamud.Interface.Internal;
 
 namespace Telesto
 {
@@ -229,13 +232,13 @@ namespace Telesto
         public string Name => "Telesto";
 
         private DalamudPluginInterface _pi { get; init; }
-        private CommandManager _cm { get; init; }
-        internal ChatGui _cg { get; init; }
-        private GameGui _gg { get; init; }
-        private ClientState _cs { get; init; }
-        private ObjectTable _ot { get; init; }
-        private PartyList _pl { get; init; }
-        private DataManager _dm { get; init; }
+        private ICommandManager _cm { get; init; }
+        internal IChatGui _cg { get; init; }
+        private IGameGui _gg { get; init; }
+        private IClientState _cs { get; init; }
+        private IObjectTable _ot { get; init; }
+        private IPartyList _pl { get; init; }
+        private ITextureProvider _tp { get; init; }
         private Dictionary<string, Subscription> Subscriptions = new Dictionary<string, Subscription>();
         private ManualResetEvent SendPendingEvent = new ManualResetEvent(false);
         private ManualResetEvent StopEvent = new ManualResetEvent(false);
@@ -273,20 +276,20 @@ namespace Telesto
         private Dictionary<string, Doodle> Doodles = new Dictionary<string, Doodle>();
         private Queue<PendingRequest> Requests = new Queue<PendingRequest>();
         private Queue<Tuple<string, string>> Sends = new Queue<Tuple<string, string>>();
-        private Dictionary<int, TextureWrap> _textures = new Dictionary<int, TextureWrap>();
+        private Dictionary<int, IDalamudTextureWrap> _textures = new Dictionary<int, IDalamudTextureWrap>();
 
         [PluginService]
-        public static SigScanner TargetModuleScanner { get; private set; }
+        public static ISigScanner TargetModuleScanner { get; private set; }
 
         public Plugin(
             [RequiredVersion("1.0")] DalamudPluginInterface pluginInterface,
-            [RequiredVersion("1.0")] CommandManager commandManager,
-            [RequiredVersion("1.0")] ClientState clientState,
-            [RequiredVersion("1.0")] ObjectTable objectTable,
-            [RequiredVersion("1.0")] GameGui gameGui,
-            [RequiredVersion("1.0")] ChatGui chatGui,
-            [RequiredVersion("1.0")] PartyList partylist,
-            [RequiredVersion("1.0")] DataManager dataManager
+            [RequiredVersion("1.0")] ICommandManager commandManager,
+            [RequiredVersion("1.0")] IClientState clientState,
+            [RequiredVersion("1.0")] IObjectTable objectTable,
+            [RequiredVersion("1.0")] IGameGui gameGui,
+            [RequiredVersion("1.0")] IChatGui chatGui,
+            [RequiredVersion("1.0")] IPartyList partylist,
+            [RequiredVersion("1.0")] ITextureProvider textureProvider
         )
         {
             _pi = pluginInterface;
@@ -296,7 +299,7 @@ namespace Telesto
             _gg = gameGui;
             _cg = chatGui;
             _pl = partylist;
-            _dm = dataManager;
+            _tp = textureProvider;
             _cfg = _pi.GetPluginConfig() as Config ?? new Config();
             _pi.UiBuilder.Draw += DrawUI;
             _pi.UiBuilder.OpenConfigUi += OpenConfigUI;
@@ -312,14 +315,14 @@ namespace Telesto
             LoadTextures();
             if (_cs.IsLoggedIn == true)
             {
-                _cs_Login(null, null);
+                _cs_Login();
             }
             SendThread = new Thread(new ParameterizedThreadStart(SendThreadProc));
             SendThread.Name = "Telesto send thread";
             SendThread.Start(this);
         }
 
-        private void _cs_TerritoryChanged(object sender, ushort e)
+        private void _cs_TerritoryChanged(ushort e)
         {
             _territoryChanged = true;
         }
@@ -331,7 +334,7 @@ namespace Telesto
 
         private void UnloadTextures()
         {
-            foreach (KeyValuePair<int, TextureWrap> kp in _textures)
+            foreach (KeyValuePair<int, IDalamudTextureWrap> kp in _textures)
             {
                 if (kp.Value != null)
                 {
@@ -364,9 +367,9 @@ namespace Telesto
             }
         }
 
-        internal TextureWrap? GetTexture(uint id)
+        internal IDalamudTextureWrap? GetTexture(uint id)
         {
-            return _dm.GetImGuiTextureIcon(id);
+            return _tp.GetIcon(id, Dalamud.Plugin.Services.ITextureProvider.IconFlags.None);
         }
 
         private IntPtr SearchForSig(string sig)
@@ -379,7 +382,7 @@ namespace Telesto
             return TargetModuleScanner.GetStaticAddressFromSig(sig, 11);
         }
 
-        private void _cs_Logout(object sender, EventArgs e)
+        private void _cs_Logout()
         {
             _loggedIn = false;
             ResetSigs();
@@ -395,7 +398,7 @@ namespace Telesto
             }
         }
 
-        private void _cs_Login(object sender, EventArgs e)
+        private void _cs_Login()
         {
             _loggedIn = true;
             ResetSigs();

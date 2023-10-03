@@ -1,4 +1,5 @@
-﻿using ImGuiNET;
+﻿using Dalamud.Interface.Internal;
+using ImGuiNET;
 using ImGuiScene;
 using System;
 using System.Collections;
@@ -32,7 +33,7 @@ namespace Telesto.Doodles
         internal AlignmentEnum valign = AlignmentEnum.Near;
         internal Coordinate position { get; set; }
         internal uint IconId = 0;
-        internal TextureWrap? Texture { get; set; } = null;
+        internal IDalamudTextureWrap? Texture { get; set; } = null;
 
         internal int calcWidth;
         internal int calcHeight;
