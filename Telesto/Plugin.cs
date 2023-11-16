@@ -811,7 +811,7 @@ namespace Telesto
             {
                 lock (_waymarks)
                 {
-                    Marshal.PtrToStructure<Waymarks>(_waymarksObj + 0x1b0, _waymarks);
+                    Marshal.PtrToStructure<Waymarks>(_waymarksObj + 0x1e0, _waymarks);
                 }
             }
             catch (Exception)
