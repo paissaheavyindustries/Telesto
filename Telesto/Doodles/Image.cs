@@ -1,4 +1,6 @@
 ﻿using Dalamud.Interface.Internal;
+using Dalamud.Interface.Textures;
+using Dalamud.Interface.Textures.TextureWraps;
 using ImGuiNET;
 using ImGuiScene;
 using System;
@@ -33,20 +35,10 @@ namespace Telesto.Doodles
         internal AlignmentEnum valign = AlignmentEnum.Near;
         internal Coordinate position { get; set; }
         internal uint IconId = 0;
-        internal IDalamudTextureWrap? Texture { get; set; } = null;
+        internal ISharedImmediateTexture Texture { get; set; } = null;
 
         internal int calcWidth;
         internal int calcHeight;
-
-        public override void Dispose()
-        {
-            base.Dispose();
-            if (Texture != null)
-            {
-                Texture.Dispose();
-                Texture = null;
-            }
-        }
 
         internal override Coordinate GetCoordinateByName(string id)
         {
@@ -123,11 +115,12 @@ namespace Telesto.Doodles
                 Texture = p.GetTexture(IconId);
                 IconId = 0;
             }
+            IDalamudTextureWrap tx = Texture.GetWrapOrEmpty();            
             Match m;
             m = rex.Match(Width);
             if (m.Success == true)
             {
-                calcWidth = (int)Math.Ceiling((float)Texture.Width * (float)int.Parse(m.Groups["val"].Value) / 100.0f);
+                calcWidth = (int)Math.Ceiling((float)tx.Width * (float)int.Parse(m.Groups["val"].Value) / 100.0f);
             }
             else
             {
@@ -136,7 +129,7 @@ namespace Telesto.Doodles
             m = rex.Match(Height);
             if (m.Success == true)
             {
-                calcHeight = (int)Math.Ceiling((float)Texture.Height * (float)int.Parse(m.Groups["val"].Value) / 100.0f);
+                calcHeight = (int)Math.Ceiling((float)tx.Height * (float)int.Parse(m.Groups["val"].Value) / 100.0f);
             }
             else
             {
@@ -172,7 +165,8 @@ namespace Telesto.Doodles
                 }
             }
             ImGui.SetCursorPos(pt);
-            ImGui.Image(Texture.ImGuiHandle, new Vector2(calcWidth, calcHeight), new Vector2(0.0f, 0.0f), new Vector2(1.0f, 1.0f), col);
+            IDalamudTextureWrap tx = Texture.GetWrapOrEmpty();
+            ImGui.Image(tx.ImGuiHandle, new Vector2(calcWidth, calcHeight), new Vector2(0.0f, 0.0f), new Vector2(1.0f, 1.0f), col);
         }
 
     }

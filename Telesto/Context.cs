@@ -12,7 +12,7 @@ namespace Telesto
     {
 
         internal Doodle doo = null;
-        internal GameObject go = null;
+        internal IGameObject go = null;
 
     }
 

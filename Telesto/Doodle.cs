@@ -79,14 +79,14 @@ namespace Telesto
                         );
                         break;
                     case CoordinateTypeEnum.Entity:
-                        GameObject go;
+                        IGameObject go;
                         if (id > 0)
                         {
                             go = p.GetEntityById(id);
                         }
                         else
-                        {
-                            go = p.GetEntityByName(name);
+                        {                                                     
+                            go = p.GetEntityByName(p.ExpandVariables(null, name));
                         }
                         if (go != null)
                         {
@@ -118,13 +118,14 @@ namespace Telesto
                         }
                         return new Vector3();
                     case CoordinateTypeEnum.Waymark:
-                        Waymark wm = p.GetWaymarkByName(name);
+                        Plugin.Waymark wm = p.GetWaymarkByName(name);
                         if (wm != null && wm.Active == true)
-                        {
+                        {                            
+                            wm.Active = false;
                             return new Vector3(
-                                ofsx + wm.X_Float,
-                                ofsy + wm.Y_Float,
-                                ofsz + wm.Z_Float
+                                ofsx + wm.X,
+                                ofsy + wm.Y,
+                                ofsz + wm.Z
                             );
                         }
                         return new Vector3();
@@ -163,14 +164,14 @@ namespace Telesto
                         );
                         break;
                     case CoordinateTypeEnum.Entity:
-                        GameObject go;
+                        IGameObject go;
                         if (id > 0)
                         {
                             go = p.GetEntityById(id);
                         }
                         else
                         {
-                            go = p.GetEntityByName(name);
+                            go = p.GetEntityByName(p.ExpandVariables(null, name));
                         }
                         if (go != null)
                         {
@@ -215,13 +216,13 @@ namespace Telesto
                         }
                         break;
                     case CoordinateTypeEnum.Waymark:                        
-                        Waymark wm = p.GetWaymarkByName(name);
+                        Plugin.Waymark wm = p.GetWaymarkByName(name);
                         if (wm != null && wm.Active == true)
                         {
                             cp = p.TranslateToScreen(
-                                ofsx + wm.X_Float,
-                                ofsy + wm.Y_Float,
-                                ofsz + wm.Z_Float
+                                ofsx + wm.X,
+                                ofsy + wm.Y,
+                                ofsz + wm.Z
                             );
                         }
                         else
@@ -269,7 +270,7 @@ namespace Telesto
                     }
                 }
                 if (id == 0)
-                {
+                {                    
                     name = (d.ContainsKey("name") == true) ? d["name"].ToString() : "";
                 }
             }
@@ -298,6 +299,8 @@ namespace Telesto
         internal string B { get; set; }
         internal string A { get; set; }
 
+        internal string ExpiryNotifyEndpoint { get; set; } = null;
+
         internal virtual string DefaultR { get; } = "0";
         internal virtual string DefaultG { get; } = "0";
         internal virtual string DefaultB { get; } = "0";
@@ -316,6 +319,7 @@ namespace Telesto
             G = (d.ContainsKey("g") == true) ? d["g"].ToString() : DefaultG;
             B = (d.ContainsKey("b") == true) ? d["b"].ToString() : DefaultB;
             A = (d.ContainsKey("a") == true) ? d["a"].ToString() : DefaultA;
+            ExpiryNotifyEndpoint = (d.ContainsKey("notifyonexpiry") == true) ? d["notifyonexpiry"].ToString() : null;
             if (d.ContainsKey("expireson") == true)
             {
                 ExpiryTypeEnum nt = 0;
