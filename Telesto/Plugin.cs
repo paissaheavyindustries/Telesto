@@ -1,8 +1,6 @@
 ﻿using Dalamud.Game;
-using Dalamud.Game.ClientState;
 using Dalamud.Game.ClientState.Party;
 using Dalamud.Game.Command;
-using Dalamud.Game.Gui;
 using Dalamud.IoC;
 using Dalamud.Plugin;
 using ImGuiNET;
@@ -15,43 +13,24 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Text.Json;
 using FFXIVClientStructs.FFXIV.Client.System.String;
-using static Lumina.Data.Parsing.Uld.NodeData;
 using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
-using Dalamud.Interface;
-using Lumina.Excel.GeneratedSheets;
-using Dalamud.Game.ClientState.Objects;
 using Dalamud.Game.ClientState.Objects.Types;
-using Dalamud.Game.ClientState.Objects.SubKinds;
-using FFXIVClientStructs.FFXIV.Client.Game.Character;
 using BattleChara = Dalamud.Game.ClientState.Objects.Types.IBattleChara;
-using Dalamud.Game.Text.SeStringHandling;
-using System.Reflection;
 using Telesto.Interop;
-using Character = Dalamud.Game.ClientState.Objects.Types.ICharacter;
-using StructCharacter = FFXIVClientStructs.FFXIV.Client.Game.Character.Character;
-using Dalamud.Game.ClientState.JobGauge.Enums;
 using static Telesto.Endpoint;
 using System.IO;
 using System.Net;
-using static System.Net.WebRequestMethods;
 using System.Threading.Tasks;
-using Dalamud.Data;
-using FFXIVClientStructs.FFXIV.Client.Game.Fate;
 using System.Diagnostics;
 using FFXIVClientStructs.FFXIV.Client.Game.UI;
-using ImGuiScene;
-using static System.Reflection.Metadata.BlobBuilder;
 using Dalamud.Plugin.Services;
 using Dalamud.Interface.Utility;
-using Dalamud.Interface.Internal;
-using System.Text;
 using Dalamud.Interface.Textures;
 using Dalamud.Interface.Textures.TextureWraps;
 using FFXIVClientStructs.FFXIV.Client.UI.Shell;
 using FFXIVClientStructs.FFXIV.Client.UI.Misc;
-using System.Runtime.CompilerServices;
 
 namespace Telesto
 {
@@ -60,11 +39,12 @@ namespace Telesto
     public sealed class Plugin : IDalamudPlugin
     {
 
-        private class Response
+        internal class Response
         {
 
             public int version { get; set; } = 1;
             public int id { get; set; } = 0;
+            public string source { get; set; } = "undefined";
             public object response { get; set; } = null;
 
         }
@@ -240,7 +220,7 @@ namespace Telesto
 
             public int Id { get; set; }
             public string Request { get; set; }
-            public object Response { get; set; } = null;
+            public Response Response { get; set; } = null;
 
             public void Dispose()
             {
@@ -249,7 +229,7 @@ namespace Telesto
 
         }
 
-        public string Version = "1.0.0.3";
+        public string Version = "1.0.0.4";
 
         private Parser _pr = null;
         private Endpoint _ep = null;
@@ -278,6 +258,7 @@ namespace Telesto
         private bool _loggedIn = false;
         private bool _funcPtrChatboxFound = false;
         private bool _destroyDoodles = false;
+        private bool _destroyForms = false;
         private Dictionary<Waymark.WaymarkEnum, Waymark> _waymarks = new Dictionary<Waymark.WaymarkEnum, Waymark>();
 
         private bool _territoryChanged = true;
@@ -286,6 +267,7 @@ namespace Telesto
         internal int _sentResponses = 0;
         internal int _sentTelegrams = 0;
         private int _numDoodles = 0;
+        private int _numForms = 0;
         internal static Regex rex = new Regex(@"\$\{(?<id>[^\}\{\$]*)\}");
         internal static Regex rexnum = new Regex(@"\$(?<id>[0-9]+)");
         internal static Regex rexlidx = new Regex(@"(?<name>[^\[]+)\[(?<index>.+?)\]");
@@ -299,6 +281,7 @@ namespace Telesto
         private PostCommandDelegate postCmdFuncptr = null;
 
         private Dictionary<string, Doodle> Doodles = new Dictionary<string, Doodle>();
+        private Dictionary<string, Form> Forms = new Dictionary<string, Form>();
         private Queue<PendingRequest> Requests = new Queue<PendingRequest>();
         private Queue<Tuple<string, string>> Sends = new Queue<Tuple<string, string>>();
         private Dictionary<int, ISharedImmediateTexture> _textures = new Dictionary<int, ISharedImmediateTexture>();
@@ -436,6 +419,44 @@ namespace Telesto
             }
         }
 
+        internal static void KeepWindowInSight()
+        {
+            Vector2 pt = ImGui.GetWindowPos();
+            Vector2 szy = ImGui.GetWindowSize();
+            bool moved = false;
+            Vector2 szx = ImGui.GetIO().DisplaySize;
+            if (szy.X > szx.X || szy.Y > szx.Y)
+            {
+                szy.X = Math.Min(szy.X, szx.X);
+                szy.Y = Math.Min(szy.Y, szx.Y);
+                ImGui.SetWindowSize(szy);
+            }
+            if (pt.X < 0)
+            {
+                pt.X += (0.0f - pt.X) / 5.0f;
+                moved = true;
+            }
+            if (pt.Y < 0)
+            {
+                pt.Y += (0.0f - pt.Y) / 5.0f;
+                moved = true;
+            }
+            if (pt.X + szy.X > szx.X)
+            {
+                pt.X -= ((pt.X + szy.X) - szx.X) / 5.0f;
+                moved = true;
+            }
+            if (pt.Y + szy.Y > szx.Y)
+            {
+                pt.Y -= ((pt.Y + szy.Y) - szx.Y) / 5.0f;
+                moved = true;
+            }
+            if (moved == true)
+            {
+                ImGui.SetWindowPos(pt);
+            }
+        }
+
         internal string QueueTelegram(string tele)
         {
             using (PendingRequest pr = new PendingRequest() { Request = tele })
@@ -445,7 +466,7 @@ namespace Telesto
                     Requests.Enqueue(pr);
                 }
                 pr.ReadyEvent.WaitOne();
-                return JsonSerializer.Serialize<Response>(new Response() { id = pr.Id, response = pr.Response });
+                return JsonSerializer.Serialize<Response>(pr.Response);
             }
         }
 
@@ -485,6 +506,8 @@ namespace Telesto
                 {
                 }
             }
+            Doodles.Clear();
+            Forms.Clear();
             _cm.RemoveHandler("/telesto");
             _cs.Logout -= _cs_Logout;
             _cs.Login -= _cs_Login;
@@ -554,6 +577,7 @@ namespace Telesto
             if (_cfg.Opened == false)
             {
                 DrawDoodles();
+                DrawForms();
                 return;
             }
             ImGui.PushStyleColor(ImGuiCol.TitleBgActive, new Vector4(0.496f, 0.058f, 0.323f, 1.0f));
@@ -574,6 +598,7 @@ namespace Telesto
                 ImGui.PopStyleColor(3);
                 return;
             }
+            KeepWindowInSight();
             ImGuiStylePtr style = ImGui.GetStyle();
             Vector2 fsz = ImGui.GetContentRegionAvail();
             fsz.Y -= ImGui.GetTextLineHeight() + (style.ItemSpacing.Y * 2) + style.WindowPadding.Y;
@@ -789,6 +814,42 @@ namespace Telesto
                         _destroyDoodles = true;
                     }
                 }
+                if (ImGui.CollapsingHeader("Forms"))
+                {
+                    ImGui.Text(String.Format("Forms active: {0}", _numForms));
+                    if (ImGui.Button("Test forms"))
+                    {
+                        {
+                            Form f = new Form();
+                            f.plug = this;
+                            f.Title = "My form 1";
+                            f.Id = "my_super_form_1";
+                            f.Callback = "http://localhost:51423";
+                            f.Elements.Add(new FormElements.Label() { Owner = f, Text = "This is a test form!" });
+                            f.Elements.Add(new FormElements.Layout() { Owner = f, Action = FormElements.Layout.LayoutEnum.Break });
+                            f.Elements.Add(new FormElements.Label() { Owner = f, Text = "Yes it is!" });
+                            f.Elements.Add(new FormElements.Layout() { Owner = f, Action = FormElements.Layout.LayoutEnum.Separator });
+                            f.Elements.Add(new FormElements.Checkbox() { Owner = f, Id = "truebox", Text = "Defaults to true", Value = "true" });
+                            f.Elements.Add(new FormElements.Checkbox() { Owner = f, Id = "falsebox", Text = "Defaults to false", Value = "false" });
+                            f.Elements.Add(new FormElements.Layout() { Owner = f, Action = FormElements.Layout.LayoutEnum.Separator });
+                            f.Elements.Add(new FormElements.InputText() { Owner = f, Id = "textdata", Text = "Text input field", Value = "Meow" });
+                            f.Elements.Add(new FormElements.InputInt() { Owner = f, Id = "intdata", Text = "Int input field", Value = "123", MinValue = 69, MaxValue = 420 });
+                            f.Elements.Add(new FormElements.Layout() { Owner = f, Action = FormElements.Layout.LayoutEnum.Separator });
+                            f.Elements.Add(new FormElements.Button() { Owner = f, Id = "nyaa", Text = "Submit", Value = "normal", Action = FormElements.Button.ActionEnum.Submit });
+                            f.Elements.Add(new FormElements.Button() { Owner = f, Id = "nyaa", Text = "Submit mindfully", Value = "mindful", Action = FormElements.Button.ActionEnum.Submit });
+                            f.Elements.Add(new FormElements.Layout() { Owner = f, Action = FormElements.Layout.LayoutEnum.Separator });
+                            f.Elements.Add(new FormElements.Button() { Owner = f, Text = "Cancel", Action = FormElements.Button.ActionEnum.Cancel });
+                            lock (Forms)
+                            {
+                                Forms[f.Id] = f;
+                            }
+                        }
+                    }
+                    if (ImGui.Button("Destroy all forms"))
+                    {
+                        _destroyForms = true;
+                    }
+                }
                 if (ImGui.CollapsingHeader("Telegrams"))
                 {
                     lock (Sends)
@@ -859,6 +920,7 @@ namespace Telesto
             ImGui.End();
             ImGui.PopStyleColor(3);
             DrawDoodles();
+            DrawForms();
         }
 
         private void OpenConfigUI()
@@ -945,44 +1007,60 @@ namespace Telesto
             );
         }
 
-        internal object ProcessRequest(PendingRequest pr)
+        internal Response ProcessRequest(PendingRequest pr)
         {
             string json = pr.Request;
             Dictionary<string, object> d = _pr.Parse(json);
             pr.Id = Convert.ToInt32(d["id"]);
-            return ProcessTelegramDictionary(d);
+            Response r = ProcessTelegramDictionary(d);
+            if (r != null)
+            {
+                r.id = pr.Id;
+            }
+            return r;
         }
 
-        private object ProcessTelegramDictionary(Dictionary<string, object> d)
+        internal static Response WrapToResponse(object o, string source = "undefined")
+        {
+            if (o == null)
+            {
+                return null;
+            }
+            return new Response() { source = source, response = o };
+        }
+
+        private Response ProcessTelegramDictionary(Dictionary<string, object> d)
         {
             switch (d["type"].ToString().ToLower())
             {
                 case "printmessage":
-                    return HandlePrintMessage(d["payload"]);
+                    return WrapToResponse(HandlePrintMessage(d["payload"]), "PrintMessage");
                 case "printerror":
-                    return HandlePrintError(d["payload"]);
+                    return WrapToResponse(HandlePrintError(d["payload"]), "PrintError");
                 case "executecommand":
-                    return HandleExecuteCommand(d["payload"]);
+                    return WrapToResponse(HandleExecuteCommand(d["payload"]), "ExecuteCommand");
                 case "openmap":
-                    return HandleOpenMap(d["payload"]);
+                    return WrapToResponse(HandleOpenMap(d["payload"]), "OpenMap");
                 case "bundle":
-                    return HandleBundle(d["payload"]);
+                    return WrapToResponse(HandleBundle(d["payload"]), "Bundle");
                 case "getpartymembers":
-                    return HandleGetPartyMembers();
+                    return WrapToResponse(HandleGetPartyMembers(), "GetPartyMembers");
                 case "ping":
-                    return HandlePing();
+                    return WrapToResponse(HandlePing(), "Ping");
                 case "enabledoodle":
-                    return HandleEnableDoodle(d["payload"]);
+                    return WrapToResponse(HandleEnableDoodle(d["payload"]), "EnableDoodle");
                 case "disabledoodle":
-                    return HandleDisableDoodle(d["payload"]);
+                    return WrapToResponse(HandleDisableDoodle(d["payload"]), "DisableDoodle");
                 case "disabledoodleregex":
-                    return HandleDisableDoodleRegex(d["payload"]);
+                    return WrapToResponse(HandleDisableDoodleRegex(d["payload"]), "DisableDoodleRegex");
                 case "subscribe":
-                    return HandleSubscribe(d["payload"]);
+                    return WrapToResponse(HandleSubscribe(d["payload"]), "Subscribe");
                 case "unsubscribe":
-                    return HandleUnsubscribe(d["payload"]);
+                    return WrapToResponse(HandleUnsubscribe(d["payload"]), "Unsubscribe");
                 case "macro":
-                    return HandleMacro(d["payload"]);
+                    return WrapToResponse(HandleMacro(d["payload"]), "Macro");
+                case "form":
+                    return WrapToResponse(HandleForm(d["payload"]), "Form");
             }
             _cg.PrintError(String.Format("Unhandled Telesto telegram type '{0}'", d["type"].ToString()));
             return null;
@@ -1066,7 +1144,7 @@ namespace Telesto
             }
             for (int i = 0; i < pl->MemberCount; i++)
             {
-                IntPtr p = (pla + (0x14ca + 0xd8 * i));
+                IntPtr p = (pla + (0x1552 + 0xd8 * i));
                 Utf8String s = pl->PartyMembers[i].Name->NodeText;
                 string dispname = UTF8StringToString(s);
                 string fullname = Marshal.PtrToStringUTF8(p);
@@ -1489,6 +1567,18 @@ namespace Telesto
             return new Vector3(tenp.X, tenp.Y, (float)z);
         }
 
+        private object HandleForm(object o)
+        {
+            Dictionary<string, object> d = (Dictionary<string, object>)o;
+            Form f = Form.Deserialize(d);
+            f.plug = this;
+            lock (Forms)
+            {
+                Forms[f.Id] = f;
+            }
+            return null;
+        }
+
         private object HandleEnableDoodle(object o)
         {
             Dictionary<string, object> d = (Dictionary<string, object>)o;
@@ -1659,6 +1749,49 @@ namespace Telesto
                 case "memory":
                     _pollForMemory = false;
                     break;
+            }
+        }
+
+        private void DrawForms()
+        {
+            List<Form> ds = new List<Form>();
+            List<Form> dead = new List<Form>();
+            lock (Forms)
+            {
+                if (_destroyForms)
+                {
+                    Forms.Clear();
+                    _destroyForms = false;
+                    return;
+                }
+                ds.AddRange(Forms.Values);
+            }
+            _numForms = ds.Count;
+            if (_numForms == 0)
+            {
+                return;
+            }
+            ImGui.PushStyleColor(ImGuiCol.TitleBgActive, new Vector4(0.496f, 0.058f, 0.323f, 1.0f));
+            ImGui.PushStyleColor(ImGuiCol.TabActive, new Vector4(0.496f, 0.058f, 0.323f, 1.0f));
+            ImGui.PushStyleColor(ImGuiCol.TabHovered, new Vector4(0.4f, 0.4f, 0.4f, 1.0f));
+            foreach (Form f in ds)
+            {
+                f.Render();
+                if (f.Finished == true)
+                {
+                    dead.Add(f);
+                }
+            }            
+            ImGui.PopStyleColor(3);
+            if (dead.Count > 0)
+            {
+                lock (Forms)
+                {
+                    foreach (Form d in dead)
+                    {
+                        Forms.Remove(d.Id);
+                    }
+                }
             }
         }
 
