@@ -229,7 +229,7 @@ namespace Telesto
 
         }
 
-        public string Version = "1.0.0.4";
+        public string Version = "1.0.0.5";
 
         private Parser _pr = null;
         private Endpoint _ep = null;
@@ -361,11 +361,10 @@ namespace Telesto
         }
 
         private void FindSigs()
-        {
-            // sig from saltycog/ffxiv-startup-commands
+        {            
             try
             {
-                _chatBoxModPtr = SearchForSig("48 89 5C 24 ?? 57 48 83 EC 20 48 8B FA 48 8B D9 45 84 C9");
+                _chatBoxModPtr = SearchForSig("48 89 5C 24 ?? 48 89 74 24 ?? 57 48 83 EC ?? 48 8B F2 48 8B F9 45 84 C9");
             }
             catch (Exception)
             {                
@@ -392,7 +391,7 @@ namespace Telesto
             return TargetModuleScanner.GetStaticAddressFromSig(sig, 11);
         }
 
-        private void _cs_Logout()
+        private void _cs_Logout(int type, int code)
         {
             _loggedIn = false;
             ResetSigs();
@@ -1159,14 +1158,14 @@ namespace Telesto
                 if (pls.ContainsKey(fullname) == true)
                 {
                     IPartyMember pm = pls[fullname];
-                    jobid = pm.ClassJob.Id;
+                    jobid = pm.ClassJob.RowId;
                     level = pm.Level;
                     actor = String.Format("{0:x8}", (pm.GameObject != null ? pm.GameObject.GameObjectId : pm.ObjectId));
                     pos = pm.Position;
                 }
                 else if (_cs.LocalPlayer != null && fullname == _cs.LocalPlayer.Name.TextValue)
                 {
-                    jobid = _cs.LocalPlayer.ClassJob.Id;
+                    jobid = _cs.LocalPlayer.ClassJob.RowId;
                     level = _cs.LocalPlayer.Level;
                     actor = String.Format("{0:x8}", _cs.LocalPlayer.GameObjectId);
                     pos = _cs.LocalPlayer.Position;
@@ -1348,9 +1347,9 @@ namespace Telesto
                 case "name":
                     return go.Name.TextValue;
                 case "job":
-                    return TranslateJob(go is BattleChara ? ((BattleChara)go).ClassJob.Id.ToString() : "0");
+                    return TranslateJob(go is BattleChara ? ((BattleChara)go).ClassJob.RowId.ToString() : "0");
                 case "jobid":
-                    return go is BattleChara ? ((BattleChara)go).ClassJob.Id.ToString() : "0";
+                    return go is BattleChara ? ((BattleChara)go).ClassJob.RowId.ToString() : "0";
                 case "currenthp":
                     return go is BattleChara ? ((BattleChara)go).CurrentHp.ToString() : "0";
                 case "currentmp":
@@ -1394,7 +1393,7 @@ namespace Telesto
                     }
                     break;
                 case "role":
-                    return TranslateRole(go is BattleChara ? ((BattleChara)go).ClassJob.Id.ToString() : "0");
+                    return TranslateRole(go is BattleChara ? ((BattleChara)go).ClassJob.RowId.ToString() : "0");
             }
             return "";
         }
