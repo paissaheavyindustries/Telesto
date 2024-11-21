@@ -25,12 +25,15 @@ using System.Net;
 using System.Threading.Tasks;
 using System.Diagnostics;
 using FFXIVClientStructs.FFXIV.Client.Game.UI;
-using Dalamud.Plugin.Services;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Textures;
 using Dalamud.Interface.Textures.TextureWraps;
 using FFXIVClientStructs.FFXIV.Client.UI.Shell;
 using FFXIVClientStructs.FFXIV.Client.UI.Misc;
+using Lumina.Excel.Sheets;
+using FFXIVClientStructs.FFXIV.Client.Game.Group;
+using System.Text;
+using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 
 namespace Telesto
 {
@@ -229,22 +232,14 @@ namespace Telesto
 
         }
 
-        public string Version = "1.0.0.5";
+        public string Version = "1.0.0.6";
 
         private Parser _pr = null;
         private Endpoint _ep = null;
         internal Config _cfg = new Config();
 
         public string Name => "Telesto";
-
-        private IDalamudPluginInterface _pi { get; init; }
-        private ICommandManager _cm { get; init; }
-        internal IChatGui _cg { get; init; }
-        private IGameGui _gg { get; init; }
-        private IClientState _cs { get; init; }
-        private IObjectTable _ot { get; init; }
-        private IPartyList _pl { get; init; }
-        private ITextureProvider _tp { get; init; }               
+      
         private Dictionary<string, Subscription> Subscriptions = new Dictionary<string, Subscription>();
         private ManualResetEvent SendPendingEvent = new ManualResetEvent(false);
         private ManualResetEvent StopEvent = new ManualResetEvent(false);
@@ -285,44 +280,29 @@ namespace Telesto
         private Queue<PendingRequest> Requests = new Queue<PendingRequest>();
         private Queue<Tuple<string, string>> Sends = new Queue<Tuple<string, string>>();
         private Dictionary<int, ISharedImmediateTexture> _textures = new Dictionary<int, ISharedImmediateTexture>();
+        private Service _svc = null;
 
         [PluginService]
         public static ISigScanner TargetModuleScanner { get; private set; }
 
-        public Plugin(
-            IDalamudPluginInterface pluginInterface,
-            ICommandManager commandManager,
-            IClientState clientState,
-            IObjectTable objectTable,
-            IGameGui gameGui,
-            IChatGui chatGui,
-            IPartyList partylist,
-            ITextureProvider textureProvider
-        )
+        public Plugin(IDalamudPluginInterface pluginInterface)
         {
-            _pi = pluginInterface;
-            _cm = commandManager;
-            _cs = clientState;
-            _ot = objectTable;
-            _gg = gameGui;
-            _cg = chatGui;
-            _pl = partylist;
-            _tp = textureProvider;
-            _cfg = _pi.GetPluginConfig() as Config ?? new Config();
-            _pi.UiBuilder.Draw += DrawUI;
-            _pi.UiBuilder.OpenConfigUi += OpenConfigUI;
-            _pi.UiBuilder.OpenMainUi += OpenConfigUI;
-            _cm.AddHandler("/telesto", new CommandInfo(OnCommand)
+            _svc = pluginInterface.Create<Service>();
+            _cfg = _svc.pi.GetPluginConfig() as Config ?? new Config();
+            _svc.pi.UiBuilder.Draw += DrawUI;
+            _svc.pi.UiBuilder.OpenConfigUi += OpenConfigUI;
+            _svc.pi.UiBuilder.OpenMainUi += OpenConfigUI;
+            _svc.cm.AddHandler("/telesto", new CommandInfo(OnCommand)
             {
                 HelpMessage = "Open Telesto configuration"
             });
-            _cs.Login += _cs_Login;
-            _cs.Logout += _cs_Logout;
-            _cs.TerritoryChanged += _cs_TerritoryChanged;
+            _svc.cs.Login += _cs_Login;
+            _svc.cs.Logout += _cs_Logout;
+            _svc.cs.TerritoryChanged += _cs_TerritoryChanged;
             _pr = new Parser();
             _ep = new Endpoint() { plug = this };
             LoadTextures();
-            if (_cs.IsLoggedIn == true)
+            if (_svc.cs.IsLoggedIn == true)
             {
                 _cs_Login();
             }
@@ -378,7 +358,7 @@ namespace Telesto
 
         internal ISharedImmediateTexture GetTexture(uint id)
         {
-            return _tp.GetFromGameIcon(new GameIconLookup() { IconId = id });            
+            return _svc.tp.GetFromGameIcon(new GameIconLookup() { IconId = id });            
         }
 
         private IntPtr SearchForSig(string sig)
@@ -507,12 +487,12 @@ namespace Telesto
             }
             Doodles.Clear();
             Forms.Clear();
-            _cm.RemoveHandler("/telesto");
-            _cs.Logout -= _cs_Logout;
-            _cs.Login -= _cs_Login;
-            _pi.UiBuilder.Draw -= DrawUI;
-            _pi.UiBuilder.OpenMainUi -= OpenConfigUI;
-            _pi.UiBuilder.OpenConfigUi -= OpenConfigUI;
+            _svc.cm.RemoveHandler("/telesto");
+            _svc.cs.Logout -= _cs_Logout;
+            _svc.cs.Login -= _cs_Login;
+            _svc.pi.UiBuilder.Draw -= DrawUI;
+            _svc.pi.UiBuilder.OpenMainUi -= OpenConfigUI;
+            _svc.pi.UiBuilder.OpenConfigUi -= OpenConfigUI;
             UnloadTextures();
             SaveConfig();
             try
@@ -567,7 +547,7 @@ namespace Telesto
             }
             catch (Exception ex)
             {                
-                _cg.PrintError(String.Format("Exception in telegram processing: {0}", ex.Message));
+                _svc.cg.PrintError(String.Format("Exception in telegram processing: {0}", ex.Message));
             }
             if (_pollForMemory == true)
             {
@@ -728,7 +708,7 @@ namespace Telesto
                 {
                     ImGui.Text(String.Format("Logged in: {0}", _loggedIn));
                     ImGui.Text(String.Format("Pointers found: cmd={0}", _funcPtrChatboxFound));
-                    ImGui.Text(String.Format("Pointer: cmd={0:X}", _chatBoxModPtr));
+                    ImGui.Text(String.Format("Pointer: cmd={0:X} pla={1:X}", _chatBoxModPtr, GetPartyListAgent()));
                 }
                 if (ImGui.CollapsingHeader("Subscriptions"))
                 {
@@ -871,7 +851,7 @@ namespace Telesto
                         }
                         catch (Exception ex)
                         {
-                            _cg.PrintError(String.Format("Exception in telegram test: {0}", ex.Message));
+                            _svc.cg.PrintError(String.Format("Exception in telegram test: {0}", ex.Message));
                         }
                     }
                 }
@@ -884,7 +864,7 @@ namespace Telesto
             Vector2 fp = ImGui.GetCursorPos();
             ImGui.SetCursorPosY(fp.Y + 2);
             ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.3f, 0.3f, 0.3f, 1.0f));
-            ImGui.Text("v" + Version);
+            ImGui.Text("v" + Version + " (" + _svc._ffxivPid + ")");
             ImGui.PopStyleColor();
             ImGui.SetCursorPos(new Vector2(_adjusterX, fp.Y));
             ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.496f, 0.058f, 0.323f, 1.0f));
@@ -929,7 +909,7 @@ namespace Telesto
 
         private void SaveConfig()
         {
-            _pi.SavePluginConfig(_cfg);
+            _svc.pi.SavePluginConfig(_cfg);
         }
 
         public unsafe void SubmitCommand(string cmd)
@@ -938,10 +918,10 @@ namespace Telesto
             {
                 return;
             }
-            AtkUnitBase* ptr = (AtkUnitBase*)_gg.GetAddonByName("ChatLog", 1);
+            AtkUnitBase* ptr = (AtkUnitBase*)_svc.gg.GetAddonByName("ChatLog", 1);
             if (ptr != null && ptr->IsVisible == true)
             {
-                IntPtr uiModule = _gg.GetUIModule();
+                IntPtr uiModule = _svc.gg.GetUIModule();
                 if (uiModule != IntPtr.Zero)
                 {
                     using (Command payload = new Command(cmd))
@@ -994,14 +974,14 @@ namespace Telesto
 
         private void OpenMapRaw(ushort territoryId, uint mapId, int x, int y)
         {
-            _gg.OpenMapWithMapLink(
+            _svc.gg.OpenMapWithMapLink(
                 new Dalamud.Game.Text.SeStringHandling.Payloads.MapLinkPayload(territoryId, mapId, x, y)
             );
         }
 
         private void OpenMapWorld(ushort territoryId, uint mapId, float x, float y)
         {
-            _gg.OpenMapWithMapLink(
+            _svc.gg.OpenMapWithMapLink(
                 new Dalamud.Game.Text.SeStringHandling.Payloads.MapLinkPayload(territoryId, mapId, x, y)
             );
         }
@@ -1061,21 +1041,21 @@ namespace Telesto
                 case "form":
                     return WrapToResponse(HandleForm(d["payload"]), "Form");
             }
-            _cg.PrintError(String.Format("Unhandled Telesto telegram type '{0}'", d["type"].ToString()));
+            _svc.cg.PrintError(String.Format("Unhandled Telesto telegram type '{0}'", d["type"].ToString()));
             return null;
         }
 
         private object HandlePrintMessage(object o)
         {
             Dictionary<string, object> d = (Dictionary<string, object>)o;
-            _cg.Print(d["message"].ToString());
+            _svc.cg.Print(d["message"].ToString());
             return null;
         }
 
         private object HandlePrintError(object o)
         {
             Dictionary<string, object> d = (Dictionary<string, object>)o;
-            _cg.PrintError(d["message"].ToString());
+            _svc.cg.PrintError(d["message"].ToString());
             return null;
         }
 
@@ -1131,47 +1111,56 @@ namespace Telesto
             return System.Text.Encoding.UTF8.GetString(s.StringPtr, (int)s.BufUsed);
         }
 
+        private unsafe IntPtr GetPartyListAgent()
+        {
+            AddonPartyList* pl = (AddonPartyList*)_svc.gg.GetAddonByName("_PartyList", 1);
+            return _svc.gg.FindAgentInterface(pl);
+        }
+
         private unsafe object HandleGetPartyMembers()
         {
-            AddonPartyList* pl = (AddonPartyList*)_gg.GetAddonByName("_PartyList", 1);
-            IntPtr pla = _gg.FindAgentInterface(pl);
             List<Combatant> cbs = new List<Combatant>();
-            Dictionary<string, IPartyMember> pls = new Dictionary<string, IPartyMember>();
-            for (int i = 0; i < _pl.Length; i++)
+            Dictionary<string, int> idx = new Dictionary<string, int>();
+            AgentHUD *ah = AgentHUD.Instance();
+            for (int i = 0; i < ah->PartyMemberCount; i++)
             {
-                pls[_pl[i].Name.TextValue] = _pl[i];
-            }
-            for (int i = 0; i < pl->MemberCount; i++)
+                var pm = ah->PartyMembers[i];
+                string temp = Marshal.PtrToStringUTF8((nint)pm.Name);
+                idx[temp] = pm.Index;
+            }            
+            foreach (IPartyMember pm in _svc.pl)
             {
-                IntPtr p = (pla + (0x1552 + 0xd8 * i));
-                Utf8String s = pl->PartyMembers[i].Name->NodeText;
-                string dispname = UTF8StringToString(s);
-                string fullname = Marshal.PtrToStringUTF8(p);
-                if (dispname[0] == '\u0000')
+                string name = pm.Name.ToString();
+                cbs.Add(new Combatant()
                 {
-                    dispname = "";
-                }
-                uint jobid = 0;
-                byte level = 0;
-                string actor = "";
-                Vector3 pos = new Vector3(0.0f, 0.0f, 0.0f);
-                if (pls.ContainsKey(fullname) == true)
-                {
-                    IPartyMember pm = pls[fullname];
-                    jobid = pm.ClassJob.RowId;
-                    level = pm.Level;
-                    actor = String.Format("{0:x8}", (pm.GameObject != null ? pm.GameObject.GameObjectId : pm.ObjectId));
-                    pos = pm.Position;
-                }
-                else if (_cs.LocalPlayer != null && fullname == _cs.LocalPlayer.Name.TextValue)
-                {
-                    jobid = _cs.LocalPlayer.ClassJob.RowId;
-                    level = _cs.LocalPlayer.Level;
-                    actor = String.Format("{0:x8}", _cs.LocalPlayer.GameObjectId);
-                    pos = _cs.LocalPlayer.Position;
-                }
-                cbs.Add(new Combatant() { displayname = dispname, fullname = fullname, order = i + 1, jobid = jobid, level = level, actor = actor, x = pos.X, y = pos.Y, z = pos.Z });
+                    displayname = pm.Name.ToString(),
+                    fullname = pm.Name.ToString(),
+                    order = idx.ContainsKey(name) == true ? idx[name] + 1 : 0,
+                    jobid = pm.ClassJob.RowId,
+                    level = pm.Level,
+                    actor = String.Format("{0:x8}", pm.GameObject != null ? pm.GameObject.GameObjectId : 0),
+                    x = pm.Position.X,
+                    y = pm.Position.Y,
+                    z = pm.Position.Z
+                });
             }
+            if (cbs.Count == 0)
+            {
+                var pc = _svc.cs.LocalPlayer;
+                cbs.Add(new Combatant()
+                {
+                    displayname = pc.Name.ToString(),
+                    fullname = pc.Name.ToString(),
+                    order = 1,
+                    jobid = pc.ClassJob.RowId,
+                    level = pc.Level,
+                    actor = String.Format("{0:x8}", pc.GameObjectId),
+                    x = pc.Position.X,
+                    y = pc.Position.Y,
+                    z = pc.Position.Z
+                });
+            }
+            cbs.Sort((a, b) => a.order.CompareTo(b.order));
             return cbs;
         }
 
@@ -1182,12 +1171,12 @@ namespace Telesto
 
         internal IGameObject GetEntityById(ulong id)
         {
-            return _ot.SearchById(id);
+            return _svc.ot.SearchById(id);
         }
 
         internal IGameObject GetEntityByName(string id)
         {
-            foreach (IGameObject go in _ot)
+            foreach (IGameObject go in _svc.ot)
             {
                 if (String.Compare(go.Name.TextValue, id, true) == 0)
                 {
@@ -1384,10 +1373,10 @@ namespace Telesto
                     return go is BattleChara ? ((BattleChara)go).CastTargetObjectId.ToString("X8") : "00000000";
                 case "distance":
                     {
-                        if (_cs.LocalPlayer != null)
+                        if (_svc.cs.LocalPlayer != null)
                         {
-                            float xdev = _cs.LocalPlayer.Position.X - go.Position.X;
-                            float zdev = _cs.LocalPlayer.Position.Z - go.Position.Z;
+                            float xdev = _svc.cs.LocalPlayer.Position.X - go.Position.X;
+                            float zdev = _svc.cs.LocalPlayer.Position.Z - go.Position.Z;
                             return Math.Sqrt((xdev * xdev) + (zdev * zdev)).ToString(CultureInfo.InvariantCulture);
                         }
                     }
@@ -1443,7 +1432,7 @@ namespace Telesto
                     }
                     else if (x == "_ffxivplayer")
                     {                        
-                        val = _cs.LocalPlayer.Name.ToString();
+                        val = _svc.cs.LocalPlayer.Name.ToString();
                         found = true;
                     }
                     else if (x.IndexOf("_addr") == 0)
@@ -1549,17 +1538,17 @@ namespace Telesto
 
         internal Vector3 GetLocalPosition()
         {
-            if (_cs.LocalPlayer == null)
+            if (_svc.cs.LocalPlayer == null)
             {
                 return new Vector3();
             }
-            return _cs.LocalPlayer.Position;
+            return _svc.cs.LocalPlayer.Position;
         }
 
         internal Vector3 TranslateToScreen(double x, double y, double z)
         {
             Vector2 tenp;
-            _gg.WorldToScreen(
+            _svc.gg.WorldToScreen(
                 new Vector3((float)x, (float)y, (float)z),
                 out tenp
             );
@@ -1719,7 +1708,7 @@ namespace Telesto
             {
                 bool.TryParse(d["shared"].ToString(), out shared);
             }
-            _cg.PrintError(string.Format("{0}, {1}", id, shared));
+            _svc.cg.PrintError(string.Format("{0}, {1}", id, shared));
             if (id >= 0 && id <= 99)
             {
                 var macro = RaptureMacroModule.Instance()->GetMacro((uint)(shared ? 1 : 0), (uint)id);
@@ -1815,7 +1804,7 @@ namespace Telesto
             }
             bool ter = _territoryChanged;
             bool log = _loggedIn;
-            bool blargimded = _cs.LocalPlayer != null ? _cs.LocalPlayer.CurrentHp == 0 : false;
+            bool blargimded = _svc.cs.LocalPlayer != null ? _svc.cs.LocalPlayer.CurrentHp == 0 : false;
             bool ded = _destroyDoodles;
             foreach (Doodle d in ds)
             {
@@ -1899,7 +1888,7 @@ namespace Telesto
         {
             List<Subscription> firstsubs = new List<Subscription>();
             Context ctx = new Context();
-            foreach (IGameObject go in _ot)
+            foreach (IGameObject go in _svc.ot)
             {
                 ctx.go = go;
                 foreach (Subscription s in Subscriptions.Values)
@@ -1922,7 +1911,7 @@ namespace Telesto
                     }
                     s.GetRepresentation(ctx, out string oldrep, out string newrep);
                     Subscriptions.Memory sm = (Subscriptions.Memory)s;
-                    //_cg.Print(String.Format("{0} {1}: old {2} new {3}", go.Address, go.Name.TextValue, oldrep, newrep));
+                    //_svc.cg.Print(String.Format("{0} {1}: old {2} new {3}", go.Address, go.Name.TextValue, oldrep, newrep));
                     QueueSendTelegram(
                         s.endpoint,
                         JsonSerializer.Serialize<Notification>(
