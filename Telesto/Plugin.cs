@@ -30,8 +30,6 @@ using Dalamud.Interface.Textures;
 using Dalamud.Interface.Textures.TextureWraps;
 using FFXIVClientStructs.FFXIV.Client.UI.Shell;
 using FFXIVClientStructs.FFXIV.Client.UI.Misc;
-using Lumina.Excel.Sheets;
-using FFXIVClientStructs.FFXIV.Client.Game.Group;
 using System.Text;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 
@@ -232,7 +230,7 @@ namespace Telesto
 
         }
 
-        public string Version = "1.0.0.6";
+        public string Version = "1.0.0.7";
 
         private Parser _pr = null;
         private Endpoint _ep = null;
@@ -1125,7 +1123,7 @@ namespace Telesto
             for (int i = 0; i < ah->PartyMemberCount; i++)
             {
                 var pm = ah->PartyMembers[i];
-                string temp = Marshal.PtrToStringUTF8((nint)pm.Name);
+                string temp = pm.Name.ToString();
                 idx[temp] = pm.Index;
             }            
             foreach (IPartyMember pm in _svc.pl)
