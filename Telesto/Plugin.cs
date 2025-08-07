@@ -3,7 +3,7 @@ using Dalamud.Game.ClientState.Party;
 using Dalamud.Game.Command;
 using Dalamud.IoC;
 using Dalamud.Plugin;
-using ImGuiNET;
+using Dalamud.Bindings.ImGui;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using System;
@@ -32,6 +32,7 @@ using FFXIVClientStructs.FFXIV.Client.UI.Shell;
 using FFXIVClientStructs.FFXIV.Client.UI.Misc;
 using System.Text;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
+using Dalamud.Game.NativeWrapper;
 
 namespace Telesto
 {
@@ -230,7 +231,7 @@ namespace Telesto
 
         }
 
-        public string Version = "1.0.0.7";
+        public string Version = "1.0.0.8";
 
         private Parser _pr = null;
         private Endpoint _ep = null;
@@ -588,7 +589,7 @@ namespace Telesto
                 {
                     Vector2 cps = ImGui.GetCursorPos();
                     IDalamudTextureWrap tx = _textures[1].GetWrapOrEmpty();
-                    ImGui.Image(tx.ImGuiHandle, new Vector2(tx.Width, tx.Height));
+                    ImGui.Image(tx.Handle, new Vector2(tx.Width, tx.Height));
                     ImGui.SetCursorPos(new Vector2(cps.X + tx.Width + 10, cps.Y));
                     ImGui.TextWrapped("There is now a new, much easier and reliable way to get automarkers! No configuration needed, you don't even need ACT or Telesto; Lemegeton is everything you need in one easy to use Dalamud plugin!" + Environment.NewLine + Environment.NewLine + "You can find it in the same Dalamud repository you added to get this plugin (Telesto), so you're just a couple of clicks away from the next generation of automarkers - just head back to the plugin installer, find Lemegeton from the list, and enjoy!" + Environment.NewLine + Environment.NewLine);
                     Vector2 cps2 = ImGui.GetCursorPos();
@@ -916,8 +917,8 @@ namespace Telesto
             {
                 return;
             }
-            AtkUnitBase* ptr = (AtkUnitBase*)_svc.gg.GetAddonByName("ChatLog", 1);
-            if (ptr != null && ptr->IsVisible == true)
+            AtkUnitBasePtr ptr = _svc.gg.GetAddonByName("ChatLog", 1);
+            if (ptr != null && ptr.IsVisible == true)
             {
                 IntPtr uiModule = _svc.gg.GetUIModule();
                 if (uiModule != IntPtr.Zero)
@@ -1111,7 +1112,7 @@ namespace Telesto
 
         private unsafe IntPtr GetPartyListAgent()
         {
-            AddonPartyList* pl = (AddonPartyList*)_svc.gg.GetAddonByName("_PartyList", 1);
+            AtkUnitBasePtr pl = _svc.gg.GetAddonByName("_PartyList", 1);
             return _svc.gg.FindAgentInterface(pl);
         }
 

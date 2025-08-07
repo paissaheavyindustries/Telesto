@@ -1,4 +1,4 @@
-﻿using ImGuiNET;
+﻿using Dalamud.Bindings.ImGui;
 using System.Collections.Generic;
 
 namespace Telesto.FormElements
@@ -26,7 +26,7 @@ namespace Telesto.FormElements
         public override void Render()
         {
             string st = Value;
-            if (ImGui.InputText(Text + "##" + Guid.ToString(), ref st, MaxLength) == true)
+            if (ImGui.InputText(Text + "##" + Guid.ToString(), ref st, (int)MaxLength) == true)
             {
                 Value = st;
             }

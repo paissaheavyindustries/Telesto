@@ -1,7 +1,7 @@
 ﻿using Dalamud.Interface.Internal;
 using Dalamud.Interface.Textures;
 using Dalamud.Interface.Textures.TextureWraps;
-using ImGuiNET;
+using Dalamud.Bindings.ImGui;
 using ImGuiScene;
 using System;
 using System.Collections;
@@ -166,7 +166,7 @@ namespace Telesto.Doodles
             }
             ImGui.SetCursorPos(pt);
             IDalamudTextureWrap tx = Texture.GetWrapOrEmpty();
-            ImGui.Image(tx.ImGuiHandle, new Vector2(calcWidth, calcHeight), new Vector2(0.0f, 0.0f), new Vector2(1.0f, 1.0f), col);
+            ImGui.Image(tx.Handle, new Vector2(calcWidth, calcHeight), new Vector2(0.0f, 0.0f), new Vector2(1.0f, 1.0f), col);
         }
 
     }
