@@ -231,7 +231,7 @@ namespace Telesto
 
         }
 
-        public string Version = "1.0.0.8";
+        public string Version = "1.0.0.9";
 
         private Parser _pr = null;
         private Endpoint _ep = null;
@@ -280,9 +280,6 @@ namespace Telesto
         private Queue<Tuple<string, string>> Sends = new Queue<Tuple<string, string>>();
         private Dictionary<int, ISharedImmediateTexture> _textures = new Dictionary<int, ISharedImmediateTexture>();
         private Service _svc = null;
-
-        [PluginService]
-        public static ISigScanner TargetModuleScanner { get; private set; }
 
         public Plugin(IDalamudPluginInterface pluginInterface)
         {
@@ -362,12 +359,12 @@ namespace Telesto
 
         private IntPtr SearchForSig(string sig)
         {
-            return TargetModuleScanner.ScanText(sig);
+            return _svc.ss.ScanText(sig);
         }
 
         private IntPtr SearchForStaticAddress(string sig, int offset)
         {
-            return TargetModuleScanner.GetStaticAddressFromSig(sig, 11);
+            return _svc.ss.GetStaticAddressFromSig(sig, 11);
         }
 
         private void _cs_Logout(int type, int code)

@@ -17,6 +17,7 @@ namespace Telesto
         [PluginService] public IObjectTable ot { get; private set; }
         [PluginService] public IPartyList pl { get; private set; }
         [PluginService] public ITextureProvider tp { get; private set; }
+        [PluginService] public ISigScanner ss { get; private set; }
         public int _ffxivPid = 0;
 
         public Service()
